@@ -7,9 +7,6 @@
  */
 
 import { PostgresAdapter } from './postgres-adapter.js';
-import pg from 'pg';
-
-const { Pool } = pg;
 
 async function migrate() {
 	console.log('[migrate] Starting PostgreSQL migration...');
@@ -17,7 +14,7 @@ async function migrate() {
 	// Get database configuration from environment
 	const connectionString = process.env.DATABASE_URL || process.env.DB_CONNECTION_STRING;
 	const host = process.env.DB_HOST;
-	const port = parseInt(process.env.DB_PORT || '5432');
+	const port = parseInt(process.env.DB_PORT || '5432', 10);
 	const database = process.env.DB_NAME || 'vibe_coding';
 	const user = process.env.DB_USER;
 	const password = process.env.DB_PASSWORD;
@@ -34,11 +31,13 @@ async function migrate() {
 			port,
 			database,
 			user,
-			password
+			password,
 		});
 	} else {
 		console.error('[migrate] Database configuration not found in environment variables');
-		console.error('[migrate] Please set DATABASE_URL or DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD');
+		console.error(
+			'[migrate] Please set DATABASE_URL or DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD'
+		);
 		process.exit(1);
 	}
 

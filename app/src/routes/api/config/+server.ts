@@ -1,8 +1,7 @@
-import { json, error } from '@sveltejs/kit';
-import type { RequestHandler } from './$types';
-import { verifyToken, extractBearerToken } from '$lib/server/auth';
-import { getAllConfig, setConfig as dbSetConfig } from '$lib/server/db';
+import { error, json } from '@sveltejs/kit';
+import { extractBearerToken, verifyToken } from '$lib/server/auth';
 import { configService } from '$lib/server/config-service';
+import type { RequestHandler } from './$types';
 
 /**
  * GET /api/config
@@ -20,7 +19,11 @@ export const GET: RequestHandler = async ({ request }) => {
 	}
 
 	// Check admin permission
-	const adminPermission = await configService.get('auth.admin_permission', 'admin', 'ADMIN_PERMISSION');
+	const adminPermission = await configService.get(
+		'auth.admin_permission',
+		'admin',
+		'ADMIN_PERMISSION'
+	);
 	const isAdmin = user.permissions.includes(adminPermission);
 	if (!isAdmin) {
 		throw error(403, 'Access denied - admin only');
@@ -52,7 +55,11 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 
 	// Check admin permission
-	const adminPermission = await configService.get('auth.admin_permission', 'admin', 'ADMIN_PERMISSION');
+	const adminPermission = await configService.get(
+		'auth.admin_permission',
+		'admin',
+		'ADMIN_PERMISSION'
+	);
 	const isAdmin = user.permissions.includes(adminPermission);
 	if (!isAdmin) {
 		throw error(403, 'Access denied - admin only');
@@ -68,7 +75,10 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		// Validate key format (alphanumeric, dots, and underscores only)
 		if (!/^[a-zA-Z0-9._]+$/.test(key)) {
-			throw error(400, 'Invalid key format. Use only alphanumeric characters, dots, and underscores.');
+			throw error(
+				400,
+				'Invalid key format. Use only alphanumeric characters, dots, and underscores.'
+			);
 		}
 
 		await configService.set(key, value, description, is_secret, category);
@@ -77,9 +87,9 @@ export const POST: RequestHandler = async ({ request }) => {
 		await configService.reload();
 
 		return json({ success: true, message: 'Configuration updated' });
-	} catch (err: any) {
+	} catch (err) {
 		console.error('[api/config] Error updating config:', err);
-		if (err.status) throw err;
+		if (err instanceof Error && 'status' in err) throw err;
 		throw error(500, 'Failed to update configuration');
 	}
 };

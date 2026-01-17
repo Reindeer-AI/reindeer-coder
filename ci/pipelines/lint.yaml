@@ -1,0 +1,34 @@
+# Linting pipeline using pre-commit hooks
+# Runs the SAME hooks as local development for consistency
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "parent_pipeline"
+    - if: $CI_MERGE_REQUEST_ID
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+
+stages:
+  - lint
+
+lint:
+  stage: lint
+  image: python:3.12-slim
+  before_script:
+    # Install system dependencies
+    - apt-get update && apt-get install -y git curl unzip
+    # Install pre-commit
+    - pip install pre-commit
+    # Install Bun
+    - curl -fsSL https://bun.sh/install | bash
+    - export BUN_INSTALL="$HOME/.bun"
+    - export PATH="$BUN_INSTALL/bin:$PATH"
+    # Install all dependencies with Bun
+    - bun install --frozen-lockfile
+    # Install pre-commit hooks
+    - pre-commit install-hooks
+  script:
+    - echo "Running pre-commit hooks on all files"
+    - export PATH="$HOME/.bun/bin:$PATH"
+    - pre-commit run --all-files --hook-stage manual

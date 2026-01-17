@@ -1,5 +1,5 @@
-import { writable, derived } from 'svelte/store';
-import { createAuth0Client, type Auth0Client, type User } from '@auth0/auth0-spa-js';
+import { type Auth0Client, createAuth0Client, type User } from '@auth0/auth0-spa-js';
+import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
 
 interface ExtendedUser extends User {
@@ -23,9 +23,9 @@ export async function initAuth0(): Promise<void> {
 			authorizationParams: {
 				redirect_uri: window.location.origin,
 				audience: import.meta.env.VITE_AUTH0_AUDIENCE,
-				organization: import.meta.env.VITE_AUTH0_ORG_ID
+				organization: import.meta.env.VITE_AUTH0_ORG_ID,
 			},
-			cacheLocation: 'localstorage'
+			cacheLocation: 'localstorage',
 		});
 
 		// Handle redirect callback
@@ -67,8 +67,8 @@ export async function logout(): Promise<void> {
 	if (!auth0Client) return;
 	await auth0Client.logout({
 		logoutParams: {
-			returnTo: window.location.origin
-		}
+			returnTo: window.location.origin,
+		},
 	});
 }
 

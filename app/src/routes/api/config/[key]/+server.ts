@@ -1,8 +1,8 @@
-import { json, error } from '@sveltejs/kit';
-import type { RequestHandler } from './$types';
-import { verifyToken, extractBearerToken } from '$lib/server/auth';
-import { getConfigByKey, deleteConfig } from '$lib/server/db';
+import { error, json } from '@sveltejs/kit';
+import { extractBearerToken, verifyToken } from '$lib/server/auth';
 import { configService } from '$lib/server/config-service';
+import { deleteConfig, getConfigByKey } from '$lib/server/db';
+import type { RequestHandler } from './$types';
 
 /**
  * GET /api/config/:key
@@ -20,7 +20,11 @@ export const GET: RequestHandler = async ({ params, request }) => {
 	}
 
 	// Check admin permission
-	const adminPermission = await configService.get('auth.admin_permission', 'admin', 'ADMIN_PERMISSION');
+	const adminPermission = await configService.get(
+		'auth.admin_permission',
+		'admin',
+		'ADMIN_PERMISSION'
+	);
 	const isAdmin = user.permissions.includes(adminPermission);
 	if (!isAdmin) {
 		throw error(403, 'Access denied - admin only');
@@ -38,9 +42,9 @@ export const GET: RequestHandler = async ({ params, request }) => {
 		}
 
 		return json({ config });
-	} catch (err: any) {
+	} catch (err) {
 		console.error('[api/config/:key] Error fetching config:', err);
-		if (err.status) throw err;
+		if (err instanceof Error && 'status' in err) throw err;
 		throw error(500, 'Failed to fetch configuration');
 	}
 };
@@ -61,7 +65,11 @@ export const DELETE: RequestHandler = async ({ params, request }) => {
 	}
 
 	// Check admin permission
-	const adminPermission = await configService.get('auth.admin_permission', 'admin', 'ADMIN_PERMISSION');
+	const adminPermission = await configService.get(
+		'auth.admin_permission',
+		'admin',
+		'ADMIN_PERMISSION'
+	);
 	const isAdmin = user.permissions.includes(adminPermission);
 	if (!isAdmin) {
 		throw error(403, 'Access denied - admin only');
@@ -74,9 +82,9 @@ export const DELETE: RequestHandler = async ({ params, request }) => {
 		await configService.reload();
 
 		return json({ success: true, message: 'Configuration deleted' });
-	} catch (err: any) {
+	} catch (err) {
 		console.error('[api/config/:key] Error deleting config:', err);
-		if (err.status) throw err;
+		if (err instanceof Error && 'status' in err) throw err;
 		throw error(500, 'Failed to delete configuration');
 	}
 };

@@ -3,9 +3,11 @@
  * Supports both SQLite and PostgreSQL
  */
 
-export interface DbRow {
-	[key: string]: any;
-}
+/** SQL parameter types supported by both SQLite and PostgreSQL */
+export type SqlValue = string | number | boolean | null | Buffer;
+
+/** Generic database row - column values can be any SQL type */
+export type DbRow = Record<string, SqlValue>;
 
 export interface DbAdapter {
 	/**
@@ -18,19 +20,19 @@ export interface DbAdapter {
 	 * Prepare and execute a query that returns a single row
 	 * Can be sync (SQLite) or async (PostgreSQL)
 	 */
-	get(sql: string, params: any[]): DbRow | undefined | Promise<DbRow | undefined>;
+	get(sql: string, params: SqlValue[]): DbRow | undefined | Promise<DbRow | undefined>;
 
 	/**
 	 * Prepare and execute a query that returns multiple rows
 	 * Can be sync (SQLite) or async (PostgreSQL)
 	 */
-	all(sql: string, params: any[]): DbRow[] | Promise<DbRow[]>;
+	all(sql: string, params: SqlValue[]): DbRow[] | Promise<DbRow[]>;
 
 	/**
 	 * Execute an insert/update/delete and return the number of affected rows
 	 * Can be sync (SQLite) or async (PostgreSQL)
 	 */
-	run(sql: string, params: any[]): void | Promise<void>;
+	run(sql: string, params: SqlValue[]): void | Promise<void>;
 
 	/**
 	 * Check if a column exists in a table
@@ -48,7 +50,7 @@ export interface DbAdapter {
  * Represents a prepared statement result for SQLite
  */
 export interface PreparedStatement {
-	get(params: any[]): DbRow | undefined;
-	all(params: any[]): DbRow[];
-	run(...params: any[]): void;
+	get(params: SqlValue[]): DbRow | undefined;
+	all(params: SqlValue[]): DbRow[];
+	run(...params: SqlValue[]): void;
 }

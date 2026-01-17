@@ -1,11 +1,11 @@
-import { json, error } from '@sveltejs/kit';
-import type { RequestHandler } from './$types';
-import { verifyToken, extractBearerToken } from '$lib/server/auth';
-import { createTask, getTasksByUserId, getAllTasks } from '$lib/server/db';
-import { startTask } from '$lib/server/vm/orchestrator';
+import { error, json } from '@sveltejs/kit';
+import { extractBearerToken, verifyToken } from '$lib/server/auth';
+import { configService } from '$lib/server/config-service';
+import { createTask, getAllTasks, getTasksByUserId } from '$lib/server/db';
 import type { TaskCreateInput } from '$lib/server/db/schema';
 import { needsAttention } from '$lib/server/terminal-storage';
-import { configService } from '$lib/server/config-service';
+import { startTask } from '$lib/server/vm/orchestrator';
+import type { RequestHandler } from './$types';
 
 // GET /api/tasks - List all tasks for the authenticated user
 export const GET: RequestHandler = async ({ request }) => {
@@ -20,14 +20,18 @@ export const GET: RequestHandler = async ({ request }) => {
 	}
 
 	// Admins can see all tasks
-	const adminPermission = await configService.get('auth.admin_permission', 'admin', 'ADMIN_PERMISSION');
+	const adminPermission = await configService.get(
+		'auth.admin_permission',
+		'admin',
+		'ADMIN_PERMISSION'
+	);
 	const isAdmin = user.permissions.includes(adminPermission);
 	const tasks = isAdmin ? await getAllTasks() : await getTasksByUserId(user.sub);
 
 	// Add attention flags
-	const tasksWithExtras = tasks.map(task => ({
+	const tasksWithExtras = tasks.map((task) => ({
 		...task,
-		needsAttention: needsAttention(task.id, task.status)
+		needsAttention: needsAttention(task.id, task.status),
 	}));
 
 	return json({ tasks: tasksWithExtras });
@@ -62,7 +66,10 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	// Validate required fields
 	if (!body.repository || !body.base_branch || !body.task_description || !body.coding_cli) {
-		throw error(400, 'Missing required fields: repository, base_branch, task_description, coding_cli');
+		throw error(
+			400,
+			'Missing required fields: repository, base_branch, task_description, coding_cli'
+		);
 	}
 
 	// Validate coding_cli

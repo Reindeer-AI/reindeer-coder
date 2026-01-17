@@ -1,6 +1,6 @@
+import { getTaskById, updateTaskMRMetadata } from '../db';
 import { GitLabClient } from '../gitlab/client';
-import type { MRReviewContext, GitLabMRNote } from '../gitlab/types';
-import { updateTaskMRMetadata, getTaskById } from '../db';
+import type { GitLabMRNote, MRReviewContext } from '../gitlab/types';
 
 export class CodeReviewHandler {
 	private gitlabClient: GitLabClient;
@@ -38,11 +38,7 @@ export class CodeReviewHandler {
 			instruction += `## General Review Comments\n\n`;
 			generalComments.forEach((note, idx) => {
 				const author = note.author.name || note.author.username;
-				const resolved = note.resolvable
-					? note.resolved
-						? ' ✅ RESOLVED'
-						: ' ⚠️ UNRESOLVED'
-					: '';
+				const resolved = note.resolvable ? (note.resolved ? ' ✅ RESOLVED' : ' ⚠️ UNRESOLVED') : '';
 				instruction += `### Comment ${idx + 1} by ${author}${resolved}\n\n`;
 				instruction += `${note.body}\n\n`;
 			});
@@ -61,13 +57,13 @@ export class CodeReviewHandler {
 				if (!byFile.has(path)) {
 					byFile.set(path, []);
 				}
-				byFile.get(path)!.push(note);
+				byFile.get(path)?.push(note);
 			});
 
 			// Format by file
 			byFile.forEach((notes, filepath) => {
 				instruction += `### File: \`${filepath}\`\n\n`;
-				notes.forEach((note, idx) => {
+				notes.forEach((note) => {
 					const author = note.author.name || note.author.username;
 					const resolved = note.resolvable
 						? note.resolved
@@ -119,9 +115,7 @@ export class CodeReviewHandler {
 		const mrUrl = this.gitlabClient.extractMRUrl(terminalOutput);
 
 		if (!mrUrl) {
-			console.log(
-				`[CodeReviewHandler] No MR URL found in terminal output for task ${taskId}`
-			);
+			console.log(`[CodeReviewHandler] No MR URL found in terminal output for task ${taskId}`);
 			return;
 		}
 
@@ -138,7 +132,7 @@ export class CodeReviewHandler {
 				mr_iid: parsed.mrIid,
 				mr_url: mrUrl,
 				project_id: parsed.projectPath,
-				last_review_sha: mr.sha
+				last_review_sha: mr.sha,
 			});
 
 			console.log(`[CodeReviewHandler] Stored MR info for task ${taskId}: ${mrUrl}`);
@@ -146,10 +140,7 @@ export class CodeReviewHandler {
 			// Assign the ticket creator as a reviewer
 			await this.assignTicketCreatorAsReviewer(taskId, parsed.projectPath, parsed.mrIid);
 		} catch (error) {
-			console.error(
-				`[CodeReviewHandler] Failed to fetch MR details for task ${taskId}:`,
-				error
-			);
+			console.error(`[CodeReviewHandler] Failed to fetch MR details for task ${taskId}:`, error);
 		}
 	}
 
@@ -170,16 +161,18 @@ export class CodeReviewHandler {
 			}
 
 			// Skip if user email is unknown or the default agent email
-			if (!task.user_email || task.user_email === 'unknown' || task.user_email === 'linear-agent@reindeer.ai') {
+			if (
+				!task.user_email ||
+				task.user_email === 'unknown' ||
+				task.user_email === 'linear-agent@reindeer.ai'
+			) {
 				console.log(
 					`[CodeReviewHandler] No valid user email for task ${taskId}, skipping reviewer assignment`
 				);
 				return;
 			}
 
-			console.log(
-				`[CodeReviewHandler] Looking up GitLab user for email: ${task.user_email}`
-			);
+			console.log(`[CodeReviewHandler] Looking up GitLab user for email: ${task.user_email}`);
 
 			// Find the GitLab user by email
 			const userId = await this.gitlabClient.findUserByEmail(task.user_email);
@@ -202,10 +195,7 @@ export class CodeReviewHandler {
 			);
 		} catch (error) {
 			// Log but don't throw - reviewer assignment is a nice-to-have, not critical
-			console.error(
-				`[CodeReviewHandler] Failed to assign reviewer for task ${taskId}:`,
-				error
-			);
+			console.error(`[CodeReviewHandler] Failed to assign reviewer for task ${taskId}:`, error);
 		}
 	}
 
@@ -223,14 +213,11 @@ export class CodeReviewHandler {
 			throw new Error(`Invalid GitLab MR URL: ${gitlabMRUrl}`);
 		}
 
-		const context = await this.gitlabClient.getMRReviewContext(
-			parsed.projectPath,
-			parsed.mrIid
-		);
+		const context = await this.gitlabClient.getMRReviewContext(parsed.projectPath, parsed.mrIid);
 
 		// Update last review SHA
 		await updateTaskMRMetadata(taskId, {
-			last_review_sha: context.mr.sha
+			last_review_sha: context.mr.sha,
 		});
 
 		return this.formatCodeReviewInstruction(context, taskDescription);

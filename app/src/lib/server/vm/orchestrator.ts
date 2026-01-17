@@ -1,15 +1,20 @@
-import { spawn } from 'child_process';
-import { writeFileSync, unlinkSync, readFileSync, existsSync } from 'fs';
-import { tmpdir } from 'os';
-import { join, resolve } from 'path';
-import { env } from '$env/dynamic/private';
-import { v4 as uuidv4 } from 'uuid';
+import { spawn } from 'node:child_process';
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import Anthropic from '@anthropic-ai/sdk';
-import { connectToVM, execOnVM, type GcloudConnection } from './gcloud';
-import { getTaskById, updateTaskStatus, appendTerminalBuffer as appendTerminalBufferRaw, updateTaskVmName, updateTaskVmExternalIp, updateTaskVmZone } from '../db';
-import type { Task } from '../db/schema';
+import { env } from '$env/dynamic/private';
 import { configService } from '../config-service';
+import {
+	appendTerminalBuffer as appendTerminalBufferRaw,
+	getTaskById,
+	updateTaskStatus,
+	updateTaskVmName,
+	updateTaskVmZone,
+} from '../db';
+import type { Task } from '../db/schema';
 import { getAnthropicApiKey } from '../secrets';
+import { connectToVM, type GcloudConnection } from './gcloud';
 
 /**
  * Extract a readable name from an email address
@@ -23,7 +28,7 @@ function extractNameFromEmail(email: string): string {
 	return username
 		.replace(/[._-]/g, ' ')
 		.split(' ')
-		.map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+		.map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
 		.join(' ');
 }
 
@@ -70,7 +75,9 @@ async function monitorConnectionHealth(): Promise<void> {
 		// Check if connection has been inactive for too long
 		const timeSinceActivity = Date.now() - state.lastActivity.getTime();
 		if (timeSinceActivity > CONNECTION_STALE_TIMEOUT_MS && state.status === 'connected') {
-			console.log(`[health-check] Connection for task ${taskId} appears stale (${Math.floor(timeSinceActivity / 1000)}s since activity), triggering reconnect`);
+			console.log(
+				`[health-check] Connection for task ${taskId} appears stale (${Math.floor(timeSinceActivity / 1000)}s since activity), triggering reconnect`
+			);
 			handleConnectionLoss(taskId);
 		}
 	}
@@ -108,7 +115,7 @@ function redactSensitive(text: string): string {
 		// Generic Bearer tokens in export commands
 		/export\s+[A-Z_]*(?:KEY|TOKEN|SECRET)[A-Z_]*=["']?([^"'\s]+)["']?/gi,
 		// Environment variable assignments with sensitive names
-		/(ANTHROPIC_API_KEY|OPENAI_API_KEY|GITLAB_TOKEN|GIT_TOKEN|API_KEY|SECRET|TOKEN|PASSWORD)=["']?([^"'\s\r\n]+)["']?/gi
+		/(ANTHROPIC_API_KEY|OPENAI_API_KEY|GITLAB_TOKEN|GIT_TOKEN|API_KEY|SECRET|TOKEN|PASSWORD)=["']?([^"'\s\r\n]+)["']?/gi,
 	];
 
 	let result = text;
@@ -122,11 +129,11 @@ function redactSensitive(text: string): string {
 			if (match.includes('=')) {
 				const eqIndex = match.indexOf('=');
 				const varPart = match.substring(0, eqIndex + 1);
-				return varPart + '[REDACTED]';
+				return `${varPart}[REDACTED]`;
 			}
 			// For standalone keys, show first 8 chars then redact
 			if (match.length > 12) {
-				return match.substring(0, 8) + '...[REDACTED]';
+				return `${match.substring(0, 8)}...[REDACTED]`;
 			}
 			return '[REDACTED]';
 		});
@@ -150,7 +157,7 @@ function appendTerminalBuffer(taskId: string, content: string): void {
  */
 function extractRepoPath(repoUrl: string): string {
 	// Remove .git suffix if present
-	let url = repoUrl.replace(/\.git$/, '');
+	const url = repoUrl.replace(/\.git$/, '');
 
 	// SSH format: git@gitlab.com:user/repo
 	const sshMatch = url.match(/^git@[^:]+:(.+)$/);
@@ -250,10 +257,10 @@ Your response must be a single line with ONLY the branch name slug following the
 			messages: [
 				{
 					role: 'user',
-					content: prompt
-				}
+					content: prompt,
+				},
 			],
-			temperature: 0.3 // Lower temperature for more consistent formatting
+			temperature: 0.3, // Lower temperature for more consistent formatting
 		});
 
 		// Extract the text response
@@ -268,7 +275,9 @@ Your response must be a single line with ONLY the branch name slug following the
 
 		// Basic validation only - check if empty or clearly invalid
 		if (!branchName || branchName.length < 3 || branchName.length > 50) {
-			console.warn(`[generateBranchName] Generated branch name invalid (length: ${branchName.length}), using fallback`);
+			console.warn(
+				`[generateBranchName] Generated branch name invalid (length: ${branchName.length}), using fallback`
+			);
 			return generateFallbackBranchName(task, slugifyFallback);
 		}
 
@@ -355,13 +364,15 @@ export function getActiveConnection(taskId: string): GcloudConnection | undefine
 /**
  * Get the connection status for a task
  */
-export function getConnectionStatus(taskId: string): { status: string; tmuxSession: string; lastActivity: Date } | null {
+export function getConnectionStatus(
+	taskId: string
+): { status: string; tmuxSession: string; lastActivity: Date } | null {
 	const state = activeConnections.get(taskId);
 	if (!state) return null;
 	return {
 		status: state.status,
 		tmuxSession: state.tmuxSession,
-		lastActivity: state.lastActivity
+		lastActivity: state.lastActivity,
 	};
 }
 
@@ -376,8 +387,13 @@ async function reconnectToTmux(taskId: string): Promise<boolean> {
 	}
 
 	if (state.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-		console.error(`[reconnect] Max attempts (${MAX_RECONNECT_ATTEMPTS}) reached for task ${taskId}`);
-		appendTerminalBuffer(taskId, `\r\n[error] Max reconnection attempts reached. Connection lost.\r\n`);
+		console.error(
+			`[reconnect] Max attempts (${MAX_RECONNECT_ATTEMPTS}) reached for task ${taskId}`
+		);
+		appendTerminalBuffer(
+			taskId,
+			`\r\n[error] Max reconnection attempts reached. Connection lost.\r\n`
+		);
 		await updateTaskStatus(taskId, 'failed');
 		activeConnections.delete(taskId);
 		return false;
@@ -385,7 +401,10 @@ async function reconnectToTmux(taskId: string): Promise<boolean> {
 
 	state.status = 'reconnecting';
 	state.reconnectAttempts++;
-	appendTerminalBuffer(taskId, `\r\n[system] Reconnecting to session (attempt ${state.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...\r\n`);
+	appendTerminalBuffer(
+		taskId,
+		`\r\n[system] Reconnecting to session (attempt ${state.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...\r\n`
+	);
 
 	try {
 		// Close old connection if exists
@@ -416,7 +435,10 @@ async function reconnectToTmux(taskId: string): Promise<boolean> {
 			const currentTask = await getTaskById(taskId);
 			if (currentTask && ['running', 'cloning'].includes(currentTask.status)) {
 				// Unexpected close - try to reconnect
-				appendTerminalBuffer(taskId, `\r\n[system] Connection lost (code: ${code}). Attempting to reconnect...\r\n`);
+				appendTerminalBuffer(
+					taskId,
+					`\r\n[system] Connection lost (code: ${code}). Attempting to reconnect...\r\n`
+				);
 				handleConnectionLoss(taskId);
 			}
 		});
@@ -432,7 +454,9 @@ async function reconnectToTmux(taskId: string): Promise<boolean> {
 
 		// Reattach to tmux session (with fallback to screen for backwards compatibility)
 		appendTerminalBuffer(taskId, `[system] Reattaching to session: ${state.tmuxSession}\r\n`);
-		conn.write(`tmux attach-session -d -t ${state.tmuxSession} 2>/dev/null || tmux new-session -s ${state.tmuxSession} 2>/dev/null || screen -r ${state.tmuxSession} 2>/dev/null || screen -S ${state.tmuxSession}\n`);
+		conn.write(
+			`tmux attach-session -d -t ${state.tmuxSession} 2>/dev/null || tmux new-session -s ${state.tmuxSession} 2>/dev/null || screen -r ${state.tmuxSession} 2>/dev/null || screen -S ${state.tmuxSession}\n`
+		);
 
 		await new Promise((resolve) => setTimeout(resolve, 1000));
 
@@ -489,7 +513,10 @@ export async function manualReconnect(taskId: string): Promise<boolean> {
 
 	if (!task.vm_name) {
 		console.error(`[manual-reconnect] Task ${taskId} has no VM name`);
-		appendTerminalBuffer(taskId, `\r\n[error] Cannot reconnect: no VM associated with this task\r\n`);
+		appendTerminalBuffer(
+			taskId,
+			`\r\n[error] Cannot reconnect: no VM associated with this task\r\n`
+		);
 		return false;
 	}
 
@@ -508,7 +535,7 @@ export async function manualReconnect(taskId: string): Promise<boolean> {
 
 	// No existing state - create a fresh connection
 	const project = env.GCP_PROJECT_ID;
-	const zone = env.GCP_ZONE;
+	const zone = env.GCP_ZONE || 'us-central1-a';
 
 	if (!project) {
 		appendTerminalBuffer(taskId, `\r\n[error] GCP_PROJECT_ID not configured\r\n`);
@@ -525,10 +552,13 @@ export async function manualReconnect(taskId: string): Promise<boolean> {
 		appendTerminalBuffer(taskId, `[system] Verifying VM exists...\r\n`);
 		try {
 			await gcloud([
-				'compute', 'instances', 'describe', task.vm_name,
+				'compute',
+				'instances',
+				'describe',
+				task.vm_name,
 				`--project=${project}`,
 				`--zone=${zone}`,
-				'--format=value(status)'
+				'--format=value(status)',
 			]);
 		} catch {
 			appendTerminalBuffer(taskId, `[error] VM ${task.vm_name} not found or not accessible\r\n`);
@@ -550,7 +580,7 @@ export async function manualReconnect(taskId: string): Promise<boolean> {
 			reconnectAttempts: 0,
 			vmName: task.vm_name,
 			zone,
-			project
+			project,
 		};
 		activeConnections.set(taskId, connState);
 
@@ -568,7 +598,10 @@ export async function manualReconnect(taskId: string): Promise<boolean> {
 		conn.onClose(async (code) => {
 			const currentTask = await getTaskById(taskId);
 			if (currentTask && ['running', 'cloning'].includes(currentTask.status)) {
-				appendTerminalBuffer(taskId, `\r\n[system] Connection lost (code: ${code}). Attempting to reconnect...\r\n`);
+				appendTerminalBuffer(
+					taskId,
+					`\r\n[system] Connection lost (code: ${code}). Attempting to reconnect...\r\n`
+				);
 				handleConnectionLoss(taskId);
 			} else {
 				activeConnections.delete(taskId);
@@ -586,7 +619,9 @@ export async function manualReconnect(taskId: string): Promise<boolean> {
 
 		// Reattach to existing session (tmux or screen for backwards compatibility)
 		appendTerminalBuffer(taskId, `[system] Reattaching to session: ${tmuxSession}\r\n`);
-		conn.write(`tmux attach-session -d -t ${tmuxSession} 2>/dev/null || tmux new-session -s ${tmuxSession} 2>/dev/null || screen -r ${tmuxSession} 2>/dev/null || screen -S ${tmuxSession}\n`);
+		conn.write(
+			`tmux attach-session -d -t ${tmuxSession} 2>/dev/null || tmux new-session -s ${tmuxSession} 2>/dev/null || screen -r ${tmuxSession} 2>/dev/null || screen -S ${tmuxSession}\n`
+		);
 
 		await new Promise((resolve) => setTimeout(resolve, 1000));
 
@@ -605,7 +640,10 @@ export async function manualReconnect(taskId: string): Promise<boolean> {
 		return true;
 	} catch (error) {
 		console.error(`[manual-reconnect] Failed for task ${taskId}:`, error);
-		appendTerminalBuffer(taskId, `\r\n[error] Reconnection failed: ${(error as Error).message}\r\n`);
+		appendTerminalBuffer(
+			taskId,
+			`\r\n[error] Reconnection failed: ${(error as Error).message}\r\n`
+		);
 		activeConnections.delete(taskId);
 		return false;
 	}
@@ -621,7 +659,7 @@ export async function startTask(taskId: string): Promise<void> {
 	}
 
 	const project = env.GCP_PROJECT_ID;
-	const zone = env.GCP_ZONE;
+	const zone = env.GCP_ZONE || 'us-central1-a';
 	const vmServiceAccount = env.GCP_VM_SERVICE_ACCOUNT;
 	const network = env.GCP_NETWORK;
 	const subnet = env.GCP_SUBNET;
@@ -660,8 +698,13 @@ export async function startTask(taskId: string): Promise<void> {
 		writeFileSync(startupScriptPath, startupScript, { mode: 0o755 });
 
 		// Extract git user identity from task
-		const fallbackEmail = await configService.get('email.fallback_address', 'agent@example.com', 'EMAIL_FALLBACK_ADDRESS');
-		const gitUserName = task.user_email === 'unknown' ? 'Code Agent' : extractNameFromEmail(task.user_email);
+		const fallbackEmail = await configService.get(
+			'email.fallback_address',
+			'agent@example.com',
+			'EMAIL_FALLBACK_ADDRESS'
+		);
+		const gitUserName =
+			task.user_email === 'unknown' ? 'Code Agent' : extractNameFromEmail(task.user_email);
 		const gitUserEmail = task.user_email === 'unknown' ? fallbackEmail : task.user_email;
 
 		// Build gcloud compute instances create command
@@ -683,7 +726,7 @@ export async function startTask(taskId: string): Promise<void> {
 			`--metadata=ANTHROPIC_API_KEY_SECRET=${env.ANTHROPIC_API_KEY_SECRET || ''},OPENAI_API_KEY_SECRET=${env.OPENAI_API_KEY_SECRET || ''},GOOGLE_API_KEY_SECRET=${env.GOOGLE_API_KEY_SECRET || ''},GITLAB_TOKEN_SECRET=${env.GITLAB_TOKEN_SECRET || ''},SECRET_IMPERSONATE_SA=${env.SECRET_IMPERSONATE_SA || ''},GIT_USER=${env.GIT_USER},GIT_USER_NAME=${gitUserName},GIT_USER_EMAIL=${gitUserEmail}`,
 			`--metadata-from-file=startup-script=${startupScriptPath}`,
 			`--labels=vibe-coding=true`,
-			'--format=json'
+			'--format=json',
 		];
 
 		// Always add cloud-platform scope to allow access to GCP resources
@@ -698,11 +741,11 @@ export async function startTask(taskId: string): Promise<void> {
 
 		await new Promise<void>((resolve, reject) => {
 			const proc = spawn('gcloud', createArgs, { stdio: ['pipe', 'pipe', 'pipe'] });
-			let stdout = '';
+			let _stdout = '';
 			let stderr = '';
 
 			proc.stdout?.on('data', (data: Buffer) => {
-				stdout += data.toString();
+				_stdout += data.toString();
 			});
 			proc.stderr?.on('data', (data: Buffer) => {
 				stderr += data.toString();
@@ -713,12 +756,16 @@ export async function startTask(taskId: string): Promise<void> {
 			});
 			proc.on('error', (err) => {
 				// Clean up temp file on error
-				try { unlinkSync(startupScriptPath); } catch {}
+				try {
+					unlinkSync(startupScriptPath);
+				} catch {}
 				reject(err);
 			});
 			proc.on('close', (code) => {
 				// Clean up temp file
-				try { unlinkSync(startupScriptPath); } catch {}
+				try {
+					unlinkSync(startupScriptPath);
+				} catch {}
 				if (code === 0) {
 					resolve();
 				} else {
@@ -729,8 +776,14 @@ export async function startTask(taskId: string): Promise<void> {
 
 		appendTerminalBuffer(taskId, `[system] VM created successfully!\r\n`);
 
-		appendTerminalBuffer(taskId, `[system] Waiting for VM to boot and SSH to become available...\r\n`);
-		appendTerminalBuffer(taskId, `[system] (This can take 1-3 minutes while the startup script runs)\r\n\r\n`);
+		appendTerminalBuffer(
+			taskId,
+			`[system] Waiting for VM to boot and SSH to become available...\r\n`
+		);
+		appendTerminalBuffer(
+			taskId,
+			`[system] (This can take 1-3 minutes while the startup script runs)\r\n\r\n`
+		);
 
 		// Wait for SSH to become available - VMs need time to boot and start sshd
 		// Try connecting multiple times with increasing delays
@@ -740,7 +793,10 @@ export async function startTask(taskId: string): Promise<void> {
 
 		for (let attempt = 1; attempt <= maxAttempts; attempt++) {
 			const waitTime = delays[attempt - 1] / 1000;
-			appendTerminalBuffer(taskId, `[ssh] Attempt ${attempt}/${maxAttempts} - waiting ${waitTime}s before connecting...\r\n`);
+			appendTerminalBuffer(
+				taskId,
+				`[ssh] Attempt ${attempt}/${maxAttempts} - waiting ${waitTime}s before connecting...\r\n`
+			);
 
 			// Wait before attempting
 			await new Promise((resolve) => setTimeout(resolve, delays[attempt - 1]));
@@ -752,7 +808,7 @@ export async function startTask(taskId: string): Promise<void> {
 				const testResult = await new Promise<boolean>((resolve) => {
 					const testConn = connectToVM(vmName, zone, project);
 					let connected = false;
-					let receivedData = '';
+					let _receivedData = '';
 					const timeout = setTimeout(() => {
 						appendTerminalBuffer(taskId, `[ssh] Connection test timed out after 30s\r\n`);
 						testConn.close();
@@ -760,7 +816,7 @@ export async function startTask(taskId: string): Promise<void> {
 					}, 30000); // 30s timeout for connection test
 
 					testConn.onData((data) => {
-						receivedData += data;
+						_receivedData += data;
 						// Log all received data for debugging
 						appendTerminalBuffer(taskId, `[ssh:data] ${data.replace(/\n/g, '\r\n')}`);
 						if (!connected && (data.includes('$') || data.includes('#') || data.includes('~'))) {
@@ -794,13 +850,19 @@ export async function startTask(taskId: string): Promise<void> {
 				});
 
 				if (testResult) {
-					appendTerminalBuffer(taskId, `\r\n[system] SSH connection established successfully!\r\n\r\n`);
+					appendTerminalBuffer(
+						taskId,
+						`\r\n[system] SSH connection established successfully!\r\n\r\n`
+					);
 					break;
 				} else {
 					appendTerminalBuffer(taskId, `[ssh] Connection test failed, will retry...\r\n\r\n`);
 				}
 			} catch (err) {
-				appendTerminalBuffer(taskId, `[ssh] Attempt ${attempt} error: ${(err as Error).message}\r\n\r\n`);
+				appendTerminalBuffer(
+					taskId,
+					`[ssh] Attempt ${attempt} error: ${(err as Error).message}\r\n\r\n`
+				);
 			}
 
 			if (attempt === maxAttempts) {
@@ -829,7 +891,7 @@ export async function startTask(taskId: string): Promise<void> {
 			reconnectAttempts: 0,
 			vmName,
 			zone,
-			project
+			project,
 		};
 		activeConnections.set(taskId, connState);
 
@@ -884,18 +946,38 @@ export async function startTask(taskId: string): Promise<void> {
 		appendTerminalBuffer(taskId, `========================================\r\n\r\n`);
 
 		// Build commands based on CLI type
-		const cliSetupCommands = generateCliSetupCommands(task.coding_cli, task.vm_external_ip, task.system_prompt, vmUser);
+		const cliSetupCommands = generateCliSetupCommands(
+			task.coding_cli,
+			task.vm_external_ip,
+			task.system_prompt,
+			vmUser
+		);
 		const agentStartCommand = generateAgentStartCommand(task.coding_cli, task.system_prompt);
 		const repoPath = extractRepoPath(task.repository);
 
-		const commands: Array<{ cmd: string; desc: string; isAgentStart?: boolean; statusAfter?: string }> = [
+		const commands: Array<{
+			cmd: string;
+			desc: string;
+			isAgentStart?: boolean;
+			statusAfter?: string;
+		}> = [
 			{ cmd: `cd ~`, desc: 'Changing to home directory' },
 			// Wait for startup script to complete (check for node availability)
-			{ cmd: `echo "Waiting for startup script..." && while ! command -v node &> /dev/null; do sleep 5; echo "Waiting for node..."; done && echo "Node is ready!"`, desc: 'Waiting for startup script to complete', statusAfter: 'cloning' },
+			{
+				cmd: `echo "Waiting for startup script..." && while ! command -v node &> /dev/null; do sleep 5; echo "Waiting for node..."; done && echo "Node is ready!"`,
+				desc: 'Waiting for startup script to complete',
+				statusAfter: 'cloning',
+			},
 			// Wait specifically for CLI installation to complete (source .bashrc to get updated PATH)
-			{ cmd: `source ~/.bashrc && ${task.coding_cli === 'claude-code' ? `while ! command -v claude &> /dev/null; do sleep 3; echo "Waiting for Claude Code..."; done && echo "Claude Code is ready!"` : task.coding_cli === 'gemini' ? `while ! command -v gemini &> /dev/null; do sleep 3; echo "Waiting for Gemini CLI..."; done && echo "Gemini CLI is ready!"` : `while ! command -v codex &> /dev/null; do sleep 3; echo "Waiting for Codex CLI..."; done && echo "Codex CLI is ready!"`}`, desc: `Waiting for ${task.coding_cli} CLI installation` },
+			{
+				cmd: `source ~/.bashrc && ${task.coding_cli === 'claude-code' ? `while ! command -v claude &> /dev/null; do sleep 3; echo "Waiting for Claude Code..."; done && echo "Claude Code is ready!"` : task.coding_cli === 'gemini' ? `while ! command -v gemini &> /dev/null; do sleep 3; echo "Waiting for Gemini CLI..."; done && echo "Gemini CLI is ready!"` : `while ! command -v codex &> /dev/null; do sleep 3; echo "Waiting for Codex CLI..."; done && echo "Codex CLI is ready!"`}`,
+				desc: `Waiting for ${task.coding_cli} CLI installation`,
+			},
 			// Reload tmux config now that startup script has completed
-			{ cmd: `tmux source-file ~/.tmux.conf 2>/dev/null && echo "Tmux config loaded (mouse support enabled)" || echo "Tmux config not found, using defaults"`, desc: 'Loading tmux configuration' },
+			{
+				cmd: `tmux source-file ~/.tmux.conf 2>/dev/null && echo "Tmux config loaded (mouse support enabled)" || echo "Tmux config not found, using defaults"`,
+				desc: 'Loading tmux configuration',
+			},
 			// Setup CLI and environment
 			...cliSetupCommands,
 			// Clone using git credential helper (configured during startup)
@@ -904,14 +986,19 @@ export async function startTask(taskId: string): Promise<void> {
 			// Configure git identity and pre-commit hooks
 			...generateGitConfigCommands(),
 			{ cmd: `git checkout -b ${branchName}`, desc: 'Creating feature branch' },
-			{ cmd: agentStartCommand, desc: `Starting ${task.coding_cli} agent`, isAgentStart: true, statusAfter: 'running' }
+			{
+				cmd: agentStartCommand,
+				desc: `Starting ${task.coding_cli} agent`,
+				isAgentStart: true,
+				statusAfter: 'running',
+			},
 		];
 
 		for (let i = 0; i < commands.length; i++) {
 			const { cmd, desc, isAgentStart, statusAfter } = commands[i];
 			appendTerminalBuffer(taskId, `\r\n[step ${i + 1}/${commands.length}] ${desc}\r\n`);
 			appendTerminalBuffer(taskId, `$ ${cmd}\r\n`);
-			conn.write(cmd + '\n');
+			conn.write(`${cmd}\n`);
 
 			// Determine wait time based on command type
 			let waitTime = 1000; // default
@@ -997,7 +1084,7 @@ export async function stopTask(taskId: string): Promise<void> {
 				task.vm_name,
 				`--project=${env.GCP_PROJECT_ID}`,
 				`--zone=${env.GCP_ZONE}`,
-				'--quiet'
+				'--quiet',
 			]);
 			appendTerminalBuffer(taskId, `[system] VM deleted successfully.\r\n`);
 		} catch (error) {
@@ -1047,7 +1134,7 @@ export async function completeTask(taskId: string): Promise<void> {
 				task.vm_name,
 				`--project=${env.GCP_PROJECT_ID}`,
 				`--zone=${env.GCP_ZONE}`,
-				'--quiet'
+				'--quiet',
 			]);
 			appendTerminalBuffer(taskId, `[system] VM deleted successfully.\r\n`);
 		} catch (error) {
@@ -1069,18 +1156,24 @@ export async function sendInstruction(taskId: string, instruction: string): Prom
 	if (!connState) {
 		// Log debug info about active connections
 		console.error(`[sendInstruction] No active connection for task ${taskId}`);
-		console.error(`[sendInstruction] Active connections: ${Array.from(activeConnections.keys()).join(', ') || 'none'}`);
-		throw new Error('No active connection for task. The SSH session may have ended or the server was restarted.');
+		console.error(
+			`[sendInstruction] Active connections: ${Array.from(activeConnections.keys()).join(', ') || 'none'}`
+		);
+		throw new Error(
+			'No active connection for task. The SSH session may have ended or the server was restarted.'
+		);
 	}
 
 	if (connState.status !== 'connected') {
-		console.error(`[sendInstruction] Connection not ready for task ${taskId}, status: ${connState.status}`);
+		console.error(
+			`[sendInstruction] Connection not ready for task ${taskId}, status: ${connState.status}`
+		);
 		throw new Error(`Connection is ${connState.status}. Please wait for reconnection.`);
 	}
 
 	// Write instruction to the terminal
 	console.log(`[sendInstruction] Sending to task ${taskId}: ${instruction}`);
-	connState.conn.write(instruction + '\n');
+	connState.conn.write(`${instruction}\n`);
 	connState.lastActivity = new Date();
 	appendTerminalBuffer(taskId, `\r\n[user] ${instruction}\r\n`);
 }
@@ -1097,7 +1190,9 @@ export function resizeTerminal(taskId: string, cols: number, rows: number): void
 	}
 
 	if (connState.status !== 'connected') {
-		console.error(`[resizeTerminal] Connection not ready for task ${taskId}, status: ${connState.status}`);
+		console.error(
+			`[resizeTerminal] Connection not ready for task ${taskId}, status: ${connState.status}`
+		);
 		return;
 	}
 
@@ -1152,7 +1247,7 @@ set -g mouse on
 set -g history-limit 50000
 
 # Use 256 colors
-set -g default-terminal \"screen-256color\"
+set -g default-terminal "screen-256color"
 
 # Start window numbering at 1
 set -g base-index 1
@@ -1161,7 +1256,7 @@ set -g base-index 1
 setw -g mode-keys vi
 
 # Aggressive resize - only constrain window size for clients actively viewing it
-# This prevents the \"dots filling screen\" issue when multiple clients with different sizes connect
+# This prevents the "dots filling screen" issue when multiple clients with different sizes connect
 setw -g aggressive-resize on
 EOF
 "
@@ -1182,7 +1277,7 @@ GITLAB_TOKEN_SECRET=$(curl -s "http://metadata.google.internal/computeMetadata/v
 if [ -n "$GITLAB_TOKEN_SECRET" ]; then
     echo "Resolving GitLab token from Secret Manager..."
     GITLAB_TOKEN=$(gcloud secrets versions access "$GITLAB_TOKEN_SECRET" $IMPERSONATE_FLAG 2>&1 | grep -v "^WARNING")
-    if [ -z "$GITLAB_TOKEN" ] || echo "$GITLAB_TOKEN" | grep -qi "error\|denied\|permission"; then
+    if [ -z "$GITLAB_TOKEN" ] || echo "$GITLAB_TOKEN" | grep -qi "error|denied|permission"; then
         echo "Failed to resolve GitLab token: $GITLAB_TOKEN"
         GITLAB_TOKEN=""
     else
@@ -1216,7 +1311,7 @@ ANTHROPIC_API_KEY_SECRET=$(curl -s "http://metadata.google.internal/computeMetad
 if [ -n "$ANTHROPIC_API_KEY_SECRET" ]; then
     echo "Resolving Anthropic API key from Secret Manager..."
     export ANTHROPIC_API_KEY=$(gcloud secrets versions access "$ANTHROPIC_API_KEY_SECRET" $IMPERSONATE_FLAG 2>&1 | grep -v "^WARNING")
-    if [ -z "$ANTHROPIC_API_KEY" ] || echo "$ANTHROPIC_API_KEY" | grep -qi "error\|denied\|permission"; then
+    if [ -z "$ANTHROPIC_API_KEY" ] || echo "$ANTHROPIC_API_KEY" | grep -qi "error|denied|permission"; then
         echo "Failed to resolve Anthropic API key: $ANTHROPIC_API_KEY"
         export ANTHROPIC_API_KEY=""
     else
@@ -1247,8 +1342,8 @@ done
 
 # Add npm global bin to PATH for ${vmUser} user
 NPM_BIN=$(npm config get prefix)/bin
-echo "export PATH=\\\$PATH:$NPM_BIN" >> /home/${vmUser}/.bashrc
-echo "export PATH=\\\$PATH:$NPM_BIN" >> /home/${vmUser}/.profile
+echo "export PATH=\\$PATH:$NPM_BIN" >> /home/${vmUser}/.bashrc
+echo "export PATH=\\$PATH:$NPM_BIN" >> /home/${vmUser}/.profile
 chown ${vmUser}:${vmUser} /home/${vmUser}/.bashrc /home/${vmUser}/.profile
 
 # Resolve Google API key from Secret Manager at runtime (if provided)
@@ -1316,8 +1411,8 @@ done
 
 # Add npm global bin to PATH for ${vmUser} user
 NPM_BIN=$(npm config get prefix)/bin
-echo "export PATH=\\\$PATH:$NPM_BIN" >> /home/${vmUser}/.bashrc
-echo "export PATH=\\\$PATH:$NPM_BIN" >> /home/${vmUser}/.profile
+echo "export PATH=\\$PATH:$NPM_BIN" >> /home/${vmUser}/.bashrc
+echo "export PATH=\\$PATH:$NPM_BIN" >> /home/${vmUser}/.profile
 chown ${vmUser}:${vmUser} /home/${vmUser}/.bashrc /home/${vmUser}/.profile
 
 # Resolve OpenAI API key from Secret Manager at runtime (more secure)
@@ -1335,9 +1430,9 @@ chown -R ${vmUser}:${vmUser} /home/${vmUser}/.codex
 
 # Pre-authenticate Codex CLI as ${vmUser} user using API key
 # This creates ~/.codex/auth.json with cached credentials
-if [ -n "\$OPENAI_API_KEY" ]; then
+if [ -n "$OPENAI_API_KEY" ]; then
     echo "Pre-authenticating Codex CLI with API key..."
-    if su - ${vmUser} -c "echo \$OPENAI_API_KEY | codex login --with-api-key"; then
+    if su - ${vmUser} -c "echo $OPENAI_API_KEY | codex login --with-api-key"; then
         echo "Codex CLI successfully authenticated"
     else
         echo "WARNING: Codex pre-auth failed, will need to auth on first run"
@@ -1361,7 +1456,7 @@ chown -R ${vmUser}:${vmUser} /home/${vmUser}/.codex
 
 # Note: Codex uses --yolo flag (alias for --dangerously-bypass-approvals-and-sandbox)
 # for autonomous operation in sandboxed VM environments
-`
+`,
 	};
 
 	return baseScript + (cliScripts[codingCli] || '');
@@ -1392,17 +1487,22 @@ function loadMcpConfig(): string | null {
 /**
  * Generate CLI setup commands (install CLI and set env vars)
  */
-function generateCliSetupCommands(codingCli: string, vmExternalIp: string | null, systemPrompt: string | null | undefined, vmUser: string): Array<{ cmd: string; desc: string }> {
+function generateCliSetupCommands(
+	codingCli: string,
+	_vmExternalIp: string | null,
+	systemPrompt: string | null | undefined,
+	vmUser: string
+): Array<{ cmd: string; desc: string }> {
 	// Common setup commands - resolve GitLab token from Secret Manager and load git user
 	const commonCommands: Array<{ cmd: string; desc: string }> = [
 		{
 			cmd: `GITLAB_TOKEN_SECRET=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/attributes/GITLAB_TOKEN_SECRET" -H "Metadata-Flavor: Google") && IMPERSONATE_FLAG="" && [ -n "$SECRET_IMPERSONATE_SA" ] && IMPERSONATE_FLAG="--impersonate-service-account=$SECRET_IMPERSONATE_SA" && export GITLAB_TOKEN=$(gcloud secrets versions access "$GITLAB_TOKEN_SECRET" $IMPERSONATE_FLAG 2>&1 | grep -v "^WARNING")`,
-			desc: 'Resolving GitLab token from Secret Manager'
+			desc: 'Resolving GitLab token from Secret Manager',
 		},
 		{
 			cmd: `export GIT_USER=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/attributes/GIT_USER" -H "Metadata-Flavor: Google")`,
-			desc: 'Loading git user from VM metadata'
-		}
+			desc: 'Loading git user from VM metadata',
+		},
 	];
 
 	// Load MCP configuration
@@ -1412,70 +1512,82 @@ function generateCliSetupCommands(codingCli: string, vmExternalIp: string | null
 		'claude-code': [
 			{
 				cmd: `command -v claude || sudo npm install -g @anthropic-ai/claude-code`,
-				desc: 'Installing Claude Code CLI'
+				desc: 'Installing Claude Code CLI',
 			},
 			{
 				cmd: `ANTHROPIC_API_KEY_SECRET=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/attributes/ANTHROPIC_API_KEY_SECRET" -H "Metadata-Flavor: Google") && IMPERSONATE_FLAG="" && [ -n "$SECRET_IMPERSONATE_SA" ] && IMPERSONATE_FLAG="--impersonate-service-account=$SECRET_IMPERSONATE_SA" && export ANTHROPIC_API_KEY=$(gcloud secrets versions access "$ANTHROPIC_API_KEY_SECRET" $IMPERSONATE_FLAG 2>&1 | grep -v "^WARNING")`,
-				desc: 'Resolving ANTHROPIC_API_KEY from Secret Manager'
+				desc: 'Resolving ANTHROPIC_API_KEY from Secret Manager',
 			},
 			{
 				// Create Claude Code config to skip onboarding, pre-approve the API key, and accept bypass permissions
 				// The customApiKeyResponses.approved array needs last 20 chars of the API key
 				// bypassPermissionsModeAccepted: true pre-accepts the --dangerously-skip-permissions warning
 				cmd: `mkdir -p ~/.claude && API_KEY_SUFFIX=$(echo $ANTHROPIC_API_KEY | tail -c 21) && echo '{"numStartups":1,"theme":"dark","autoUpdaterStatus":"disabled","hasCompletedOnboarding":true,"shiftEnterKeyBindingInstalled":true,"bypassPermissionsModeAccepted":true,"customApiKeyResponses":{"approved":["'$API_KEY_SUFFIX'"],"rejected":[]}}' > ~/.claude.json`,
-				desc: 'Creating Claude Code settings to skip login and onboarding'
+				desc: 'Creating Claude Code settings to skip login and onboarding',
 			},
 			// Deploy MCP configuration if available
-			...(mcpConfigBase64 ? [{
-				cmd: `echo "${mcpConfigBase64}" | base64 -d | jq -c '.mcpServers | to_entries[]' | while read entry; do name=$(echo "$entry" | jq -r '.key'); config=$(echo "$entry" | jq -c '.value'); claude mcp add-json "$name" "$config"; done`,
-				desc: 'Installing MCP servers from vibe-coding/mcp-config.json'
-			}] : [])
+			...(mcpConfigBase64
+				? [
+						{
+							cmd: `echo "${mcpConfigBase64}" | base64 -d | jq -c '.mcpServers | to_entries[]' | while read entry; do name=$(echo "$entry" | jq -r '.key'); config=$(echo "$entry" | jq -c '.value'); claude mcp add-json "$name" "$config"; done`,
+							desc: 'Installing MCP servers from vibe-coding/mcp-config.json',
+						},
+					]
+				: []),
 		],
 		gemini: [
 			{
 				cmd: `GOOGLE_API_KEY_SECRET=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/attributes/GOOGLE_API_KEY_SECRET" -H "Metadata-Flavor: Google" || true) && if [ -n "$GOOGLE_API_KEY_SECRET" ]; then IMPERSONATE_FLAG="" && [ -n "$SECRET_IMPERSONATE_SA" ] && IMPERSONATE_FLAG="--impersonate-service-account=$SECRET_IMPERSONATE_SA"; export GOOGLE_API_KEY=$(gcloud secrets versions access "$GOOGLE_API_KEY_SECRET" $IMPERSONATE_FLAG 2>&1 | grep -v "^WARNING"); fi`,
-				desc: 'Resolving Google API key from Secret Manager (if available)'
+				desc: 'Resolving Google API key from Secret Manager (if available)',
 			},
 			{
 				cmd: `export GOOGLE_CLOUD_PROJECT=$(curl -s "http://metadata.google.internal/computeMetadata/v1/project/project-id" -H "Metadata-Flavor: Google")`,
-				desc: 'Setting GOOGLE_CLOUD_PROJECT for ADC authentication'
+				desc: 'Setting GOOGLE_CLOUD_PROJECT for ADC authentication',
 			},
 			{
 				cmd: `export GOOGLE_CLOUD_LOCATION=us-central1`,
-				desc: 'Setting GOOGLE_CLOUD_LOCATION for Vertex AI'
+				desc: 'Setting GOOGLE_CLOUD_LOCATION for Vertex AI',
 			},
 			{
 				cmd: `export GOOGLE_GENAI_USE_VERTEXAI=true`,
-				desc: 'Enabling Vertex AI mode for Gemini CLI'
+				desc: 'Enabling Vertex AI mode for Gemini CLI',
 			},
-			...(systemPrompt ? [{
-				cmd: `mkdir -p ~/workspace/.gemini && cat > ~/workspace/.gemini/system.md << 'SYSTEM_PROMPT_EOF'
+			...(systemPrompt
+				? [
+						{
+							cmd: `mkdir -p ~/workspace/.gemini && cat > ~/workspace/.gemini/system.md << 'SYSTEM_PROMPT_EOF'
 ${systemPrompt.replace(/'/g, "'\\''")}
 SYSTEM_PROMPT_EOF`,
-				desc: 'Configuring custom system prompt for Gemini'
-			}] : []),
+							desc: 'Configuring custom system prompt for Gemini',
+						},
+					]
+				: []),
 			{
 				cmd: `command -v gemini && echo "Gemini CLI is available in PATH" || echo "WARNING: Gemini CLI not found - check startup script"`,
-				desc: 'Verifying Gemini CLI installation'
-			}
+				desc: 'Verifying Gemini CLI installation',
+			},
 		],
 		codex: [
 			{
 				cmd: `OPENAI_API_KEY_SECRET=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/attributes/OPENAI_API_KEY_SECRET" -H "Metadata-Flavor: Google") && IMPERSONATE_FLAG="" && [ -n "$SECRET_IMPERSONATE_SA" ] && IMPERSONATE_FLAG="--impersonate-service-account=$SECRET_IMPERSONATE_SA" && export OPENAI_API_KEY=$(gcloud secrets versions access "$OPENAI_API_KEY_SECRET" $IMPERSONATE_FLAG 2>&1 | grep -v "^WARNING")`,
-				desc: 'Resolving OPENAI_API_KEY from Secret Manager'
+				desc: 'Resolving OPENAI_API_KEY from Secret Manager',
 			},
-			...(systemPrompt ? [{
-				cmd: `mkdir -p ~/.codex && cat > ~/.codex/instructions.md << 'SYSTEM_PROMPT_EOF'
+			...(systemPrompt
+				? [
+						{
+							cmd: `mkdir -p ~/.codex && cat > ~/.codex/instructions.md << 'SYSTEM_PROMPT_EOF'
 ${systemPrompt.replace(/'/g, "'\\''")}
 SYSTEM_PROMPT_EOF
 echo 'experimental_instructions_file = "/home/${vmUser}/.codex/instructions.md"' >> ~/.codex/config.toml`,
-				desc: 'Configuring custom system prompt for Codex'
-			}] : []),
+							desc: 'Configuring custom system prompt for Codex',
+						},
+					]
+				: []),
 			{
 				cmd: `command -v codex && echo "Codex CLI is available in PATH" || echo "WARNING: Codex CLI not found - check startup script"`,
-				desc: 'Verifying Codex CLI installation'
-			}
-		]
+				desc: 'Verifying Codex CLI installation',
+			},
+		],
 	};
 
 	return [...commonCommands, ...(cliCommands[codingCli] || [])];
@@ -1485,10 +1597,7 @@ echo 'experimental_instructions_file = "/home/${vmUser}/.codex/instructions.md"'
  * Generate the command to start the coding agent (in interactive mode)
  * Note: The initial task is sent separately via stdin after the agent starts
  */
-function generateAgentStartCommand(
-	codingCli: string,
-	systemPrompt?: string | null
-): string {
+function generateAgentStartCommand(codingCli: string, systemPrompt?: string | null): string {
 	const escapedPrompt = systemPrompt?.replace(/"/g, '\\"') || '';
 
 	const commands: Record<string, string> = {
@@ -1501,7 +1610,7 @@ function generateAgentStartCommand(
 		gemini: `gemini --yolo`,
 		// Codex with --yolo flag (alias for --dangerously-bypass-approvals-and-sandbox)
 		// Runs without approval prompts for autonomous operation
-		codex: `codex --yolo`
+		codex: `codex --yolo`,
 	};
 
 	return commands[codingCli] || `echo "Unknown CLI: ${codingCli}"`;
@@ -1515,15 +1624,15 @@ function generateGitConfigCommands(): Array<{ cmd: string; desc: string }> {
 	return [
 		{
 			cmd: `git config user.name`,
-			desc: 'Verifying git user name'
+			desc: 'Verifying git user name',
 		},
 		{
 			cmd: `git config user.email`,
-			desc: 'Verifying git user email'
+			desc: 'Verifying git user email',
 		},
 		{
 			cmd: `if [ -f .pre-commit-config.yaml ]; then pre-commit install && echo "Pre-commit hooks installed"; else echo "No .pre-commit-config.yaml found, skipping"; fi`,
-			desc: 'Installing pre-commit hooks if configured'
-		}
+			desc: 'Installing pre-commit hooks if configured',
+		},
 	];
 }

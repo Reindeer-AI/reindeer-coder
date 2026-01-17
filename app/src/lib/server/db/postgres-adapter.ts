@@ -1,6 +1,6 @@
+import { AuthTypes, Connector } from '@google-cloud/cloud-sql-connector';
 import pg from 'pg';
-import { Connector, AuthTypes } from '@google-cloud/cloud-sql-connector';
-import type { DbAdapter, DbRow } from './adapter';
+import type { DbAdapter, DbRow, SqlValue } from './adapter';
 
 const { Pool } = pg;
 
@@ -33,13 +33,13 @@ export class PostgresAdapter implements DbAdapter {
 			const connector = new Connector();
 			const clientOpts = await connector.getOptions({
 				instanceConnectionName,
-				authType: AuthTypes.IAM
+				authType: AuthTypes.IAM,
 			});
 
 			const config: pg.PoolConfig = {
 				...clientOpts,
 				database: process.env.DB_NAME || 'vibe_coding',
-				user: process.env.DB_USER
+				user: process.env.DB_USER,
 			};
 
 			return new PostgresAdapter(config, connector);
@@ -47,7 +47,7 @@ export class PostgresAdapter implements DbAdapter {
 
 		// Standard PostgreSQL connection string
 		return new PostgresAdapter({
-			connectionString
+			connectionString,
 		});
 	}
 
@@ -60,7 +60,7 @@ export class PostgresAdapter implements DbAdapter {
 		}
 	}
 
-	async get(sql: string, params: any[]): Promise<DbRow | undefined> {
+	async get(sql: string, params: SqlValue[]): Promise<DbRow | undefined> {
 		const client = await this.pool.connect();
 		try {
 			const result = await client.query(this.convertPlaceholders(sql), params);
@@ -70,7 +70,7 @@ export class PostgresAdapter implements DbAdapter {
 		}
 	}
 
-	async all(sql: string, params: any[]): Promise<DbRow[]> {
+	async all(sql: string, params: SqlValue[]): Promise<DbRow[]> {
 		const client = await this.pool.connect();
 		try {
 			const result = await client.query(this.convertPlaceholders(sql), params);
@@ -80,7 +80,7 @@ export class PostgresAdapter implements DbAdapter {
 		}
 	}
 
-	async run(sql: string, params: any[]): Promise<void> {
+	async run(sql: string, params: SqlValue[]): Promise<void> {
 		const client = await this.pool.connect();
 		try {
 			await client.query(this.convertPlaceholders(sql), params);
@@ -99,7 +99,7 @@ export class PostgresAdapter implements DbAdapter {
 				[tableName, columnName]
 			);
 			return result.rows.length > 0;
-		} catch (error) {
+		} catch {
 			return false;
 		} finally {
 			client.release();
@@ -149,15 +149,15 @@ export class PostgresAdapterSync implements DbAdapter {
 		});
 	}
 
-	get(sql: string, params: any[]): DbRow | undefined {
+	get(_sql: string, _params: SqlValue[]): DbRow | undefined {
 		throw new Error('Synchronous get() not supported for PostgreSQL. Use async version.');
 	}
 
-	all(sql: string, params: any[]): DbRow[] {
+	all(_sql: string, _params: SqlValue[]): DbRow[] {
 		throw new Error('Synchronous all() not supported for PostgreSQL. Use async version.');
 	}
 
-	run(sql: string, params: any[]): void {
+	run(sql: string, params: SqlValue[]): void {
 		// Execute asynchronously but don't wait for completion
 		this.adapter.run(sql, params).catch((error) => {
 			console.error('[PostgresAdapterSync] Error running SQL:', error);

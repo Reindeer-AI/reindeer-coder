@@ -1,7 +1,7 @@
-import { json, error } from '@sveltejs/kit';
-import type { RequestHandler } from './$types';
-import { verifyToken, extractBearerToken } from '$lib/server/auth';
+import { error, json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
+import { extractBearerToken, verifyToken } from '$lib/server/auth';
+import type { RequestHandler } from './$types';
 
 interface LinearComment {
 	id: string;
@@ -48,7 +48,7 @@ export const GET: RequestHandler = async ({ request, params }) => {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				'Authorization': linearApiKey
+				Authorization: linearApiKey,
 			},
 			body: JSON.stringify({
 				query: `
@@ -73,8 +73,8 @@ export const GET: RequestHandler = async ({ request, params }) => {
 						}
 					}
 				`,
-				variables: { id: issueId }
-			})
+				variables: { id: issueId },
+			}),
 		});
 
 		if (!response.ok) {

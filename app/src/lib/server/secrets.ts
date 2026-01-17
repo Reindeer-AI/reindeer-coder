@@ -68,11 +68,15 @@ export async function getAnthropicApiKey(): Promise<string> {
 	// 3. Fallback to direct env var (backwards compatibility)
 	const directKey = env.ANTHROPIC_API_KEY;
 	if (directKey) {
-		console.warn('[secrets] Using ANTHROPIC_API_KEY directly - consider migrating to secrets.anthropic_api_key config');
+		console.warn(
+			'[secrets] Using ANTHROPIC_API_KEY directly - consider migrating to secrets.anthropic_api_key config'
+		);
 		return directKey;
 	}
 
-	throw new Error('No Anthropic API key configured - set secrets.anthropic_api_key in config or ANTHROPIC_API_KEY_SECRET env var');
+	throw new Error(
+		'No Anthropic API key configured - set secrets.anthropic_api_key in config or ANTHROPIC_API_KEY_SECRET env var'
+	);
 }
 
 /**
@@ -95,11 +99,15 @@ export async function getOpenAiApiKey(): Promise<string> {
 	// 3. Fallback to direct env var (backwards compatibility)
 	const directKey = env.OPENAI_API_KEY;
 	if (directKey) {
-		console.warn('[secrets] Using OPENAI_API_KEY directly - consider migrating to secrets.openai_api_key config');
+		console.warn(
+			'[secrets] Using OPENAI_API_KEY directly - consider migrating to secrets.openai_api_key config'
+		);
 		return directKey;
 	}
 
-	throw new Error('No OpenAI API key configured - set secrets.openai_api_key in config or OPENAI_API_KEY_SECRET env var');
+	throw new Error(
+		'No OpenAI API key configured - set secrets.openai_api_key in config or OPENAI_API_KEY_SECRET env var'
+	);
 }
 
 /**
@@ -122,11 +130,15 @@ export async function getGitLabToken(): Promise<string> {
 	// 3. Fallback to direct env var (backwards compatibility)
 	const directToken = env.GITLAB_TOKEN;
 	if (directToken) {
-		console.warn('[secrets] Using GITLAB_TOKEN directly - consider migrating to secrets.gitlab_token config');
+		console.warn(
+			'[secrets] Using GITLAB_TOKEN directly - consider migrating to secrets.gitlab_token config'
+		);
 		return directToken;
 	}
 
-	throw new Error('No GitLab token configured - set secrets.gitlab_token in config or GITLAB_TOKEN_SECRET env var');
+	throw new Error(
+		'No GitLab token configured - set secrets.gitlab_token in config or GITLAB_TOKEN_SECRET env var'
+	);
 }
 
 /**
@@ -149,9 +161,13 @@ export async function getLinearApiKey(): Promise<string> {
 	// 3. Fallback to direct env var (backwards compatibility)
 	const directKey = env.LINEAR_API_KEY;
 	if (directKey) {
-		console.warn('[secrets] Using LINEAR_API_KEY directly - consider migrating to secrets.linear_api_key config');
+		console.warn(
+			'[secrets] Using LINEAR_API_KEY directly - consider migrating to secrets.linear_api_key config'
+		);
 		return directKey;
 	}
 
-	throw new Error('No Linear API key configured - set secrets.linear_api_key in config or LINEAR_API_KEY_SECRET env var');
+	throw new Error(
+		'No Linear API key configured - set secrets.linear_api_key in config or LINEAR_API_KEY_SECRET env var'
+	);
 }

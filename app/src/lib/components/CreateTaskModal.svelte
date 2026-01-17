@@ -1,91 +1,91 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
-	import { authToken, user } from '$lib/stores/auth';
+import { onMount } from 'svelte';
+import { goto } from '$app/navigation';
+import { authToken, user } from '$lib/stores/auth';
 
-	interface Props {
-		onclose: () => void;
-	}
+interface Props {
+	onclose: () => void;
+}
 
-	let { onclose }: Props = $props();
+let { onclose }: Props = $props();
 
-	interface LinearIssue {
-		id: string;
-		identifier: string;
-		title: string;
-		description: string | null;
-		state: {
+interface LinearIssue {
+	id: string;
+	identifier: string;
+	title: string;
+	description: string | null;
+	state: {
+		name: string;
+		color: string;
+	};
+	priority: number;
+	estimate: number | null;
+	labels: {
+		nodes: Array<{
 			name: string;
 			color: string;
-		};
-		priority: number;
-		estimate: number | null;
-		labels: {
-			nodes: Array<{
-				name: string;
-				color: string;
-			}>;
-		};
-		assignee: {
-			name: string;
-			email: string;
-		} | null;
-		project: {
-			name: string;
-		} | null;
-		url: string;
-	}
-
-	interface LinearComment {
-		id: string;
-		body: string;
-		createdAt: string;
-		user: {
-			name: string;
-			email: string;
-		} | null;
-	}
-
-	interface LinearIssueWithComments extends LinearIssue {
-		comments?: {
-			nodes: LinearComment[];
-		};
-	}
-
-	interface PreConfiguredRepo {
-		id: string;
+		}>;
+	};
+	assignee: {
 		name: string;
-		url: string;
-		baseBranch: string;
-		allowManual: boolean;
-	}
+		email: string;
+	} | null;
+	project: {
+		name: string;
+	} | null;
+	url: string;
+}
 
-	let preConfiguredRepos: PreConfiguredRepo[] = $state([]);
+interface LinearComment {
+	id: string;
+	body: string;
+	createdAt: string;
+	user: {
+		name: string;
+		email: string;
+	} | null;
+}
 
-	let selectedRepoId = $state<string>('custom');
-	let showRepoDropdown = $state(false);
-	let repository = $state('');
-	let baseBranch = $state('main');
-	let taskDescription = $state('');
-	let codingCli = $state<'claude-code' | 'gemini' | 'codex'>('claude-code');
-	let submitting = $state(false);
-	let error = $state<string | null>(null);
+interface LinearIssueWithComments extends LinearIssue {
+	comments?: {
+		nodes: LinearComment[];
+	};
+}
 
-	// Linear integration
-	let taskSource = $state<'manual' | 'linear'>('linear');
-	let linearIssues = $state<LinearIssue[]>([]);
-	let linearSearch = $state('');
-	let selectedLinearIssue = $state<LinearIssue | null>(null);
-	let loadingLinear = $state(false);
-	let linearError = $state<string | null>(null);
-	let showLinearDropdown = $state(false);
+interface PreConfiguredRepo {
+	id: string;
+	name: string;
+	url: string;
+	baseBranch: string;
+	allowManual: boolean;
+}
 
-	// Dynamic system prompt based on logged-in user
-	function getBaseSystemPrompt(): string {
-		const userEmail = $user?.email;
-		const userName = $user?.name;
+let preConfiguredRepos: PreConfiguredRepo[] = $state([]);
 
-		return `You are a software engineer at Reindeer AI. Follow these guidelines:
+let selectedRepoId = $state<string>('custom');
+let showRepoDropdown = $state(false);
+let repository = $state('');
+let baseBranch = $state('main');
+let taskDescription = $state('');
+let codingCli = $state<'claude-code' | 'gemini' | 'codex'>('claude-code');
+let submitting = $state(false);
+let error = $state<string | null>(null);
+
+// Linear integration
+let taskSource = $state<'manual' | 'linear'>('linear');
+let linearIssues = $state<LinearIssue[]>([]);
+let linearSearch = $state('');
+let selectedLinearIssue = $state<LinearIssue | null>(null);
+let loadingLinear = $state(false);
+let linearError = $state<string | null>(null);
+let showLinearDropdown = $state(false);
+
+// Dynamic system prompt based on logged-in user
+function getBaseSystemPrompt(): string {
+	const userEmail = $user?.email;
+	const userName = $user?.name;
+
+	return `You are a software engineer at Reindeer AI. Follow these guidelines:
 
 1. Use ${userEmail} as your identity for git commits and merge requests. Use the name "Claude Code on behalf of ${userName}". Configure git before making any commits:
    git config user.email "${userEmail}"
@@ -111,332 +111,361 @@ Reindeer AI Repositories (clone commands using pre-configured credentials):
   git clone https://$GIT_USER:$GITLAB_TOKEN@gitlab.com/reindeerai/workflows.git
 - Infrastructure as Code (Terraform):
   git clone https://$GIT_USER:$GITLAB_TOKEN@gitlab.com/reindeerai/cloud-infrastructure.git`;
-	}
+}
 
-	const linearSystemPromptAddition = `
+const linearSystemPromptAddition = `
 IMPORTANT: This task is linked to a Linear ticket. When creating the merge request:
 - Add "ref {TICKET_ID}" at the BEGINNING of the MR description (e.g., "ref REI-123")
 - This will automatically link the MR to the Linear ticket`;
 
-	let systemPrompt = $state(getBaseSystemPrompt());
+let systemPrompt = $state(getBaseSystemPrompt());
 
-	// localStorage persistence
-	interface FormState {
-		selectedRepoId: string;
-		repository: string;
-		baseBranch: string;
-		taskSource: 'manual' | 'linear';
-		linearSearch: string;
-		selectedLinearIssue: LinearIssue | null;
-		codingCli: 'claude-code' | 'gemini' | 'codex';
-		systemPrompt: string;
+// localStorage persistence
+interface FormState {
+	selectedRepoId: string;
+	repository: string;
+	baseBranch: string;
+	taskSource: 'manual' | 'linear';
+	linearSearch: string;
+	selectedLinearIssue: LinearIssue | null;
+	codingCli: 'claude-code' | 'gemini' | 'codex';
+	systemPrompt: string;
+}
+
+function saveFormState() {
+	try {
+		const state: FormState = {
+			selectedRepoId,
+			repository,
+			baseBranch,
+			taskSource,
+			linearSearch,
+			selectedLinearIssue,
+			codingCli,
+			systemPrompt,
+		};
+		localStorage.setItem('vibe-coding-task-form-state', JSON.stringify(state));
+	} catch (err) {
+		console.error('Failed to save form state:', err);
 	}
+}
 
-	function saveFormState() {
-		try {
-			const state: FormState = {
-				selectedRepoId,
-				repository,
-				baseBranch,
-				taskSource,
-				linearSearch,
-				selectedLinearIssue,
-				codingCli,
-				systemPrompt
-			};
-			localStorage.setItem('vibe-coding-task-form-state', JSON.stringify(state));
-		} catch (err) {
-			console.error('Failed to save form state:', err);
+function loadFormState() {
+	try {
+		const saved = localStorage.getItem('vibe-coding-task-form-state');
+		if (saved) {
+			const state: FormState = JSON.parse(saved);
+			selectedRepoId = state.selectedRepoId;
+			repository = state.repository;
+			baseBranch = state.baseBranch;
+			taskSource = state.taskSource;
+			linearSearch = state.linearSearch;
+			selectedLinearIssue = state.selectedLinearIssue;
+			codingCli = state.codingCli;
+			systemPrompt = state.systemPrompt;
 		}
+	} catch (err) {
+		console.error('Failed to load form state:', err);
 	}
+}
 
-	function loadFormState() {
-		try {
-			const saved = localStorage.getItem('vibe-coding-task-form-state');
-			if (saved) {
-				const state: FormState = JSON.parse(saved);
-				selectedRepoId = state.selectedRepoId;
-				repository = state.repository;
-				baseBranch = state.baseBranch;
-				taskSource = state.taskSource;
-				linearSearch = state.linearSearch;
-				selectedLinearIssue = state.selectedLinearIssue;
-				codingCli = state.codingCli;
-				systemPrompt = state.systemPrompt;
-			}
-		} catch (err) {
-			console.error('Failed to load form state:', err);
-		}
-	}
+const cliOptions = [
+	{
+		value: 'claude-code',
+		label: 'Claude Code',
+		icon: '🤖',
+		description: 'Anthropic Claude for coding',
+		comingSoon: false,
+	},
+	{
+		value: 'gemini',
+		label: 'Gemini',
+		icon: '✨',
+		description: 'Google Gemini CLI',
+		comingSoon: false,
+	},
+	{ value: 'codex', label: 'Codex', icon: '💻', description: 'OpenAI Codex', comingSoon: false },
+];
 
-	const cliOptions = [
-		{ value: 'claude-code', label: 'Claude Code', icon: '🤖', description: 'Anthropic Claude for coding', comingSoon: false },
-		{ value: 'gemini', label: 'Gemini', icon: '✨', description: 'Google Gemini CLI', comingSoon: false },
-		{ value: 'codex', label: 'Codex', icon: '💻', description: 'OpenAI Codex', comingSoon: false }
-	];
+const priorityLabels: Record<number, string> = {
+	0: 'No priority',
+	1: 'Urgent',
+	2: 'High',
+	3: 'Medium',
+	4: 'Low',
+};
 
-	const priorityLabels: Record<number, string> = {
-		0: 'No priority',
-		1: 'Urgent',
-		2: 'High',
-		3: 'Medium',
-		4: 'Low'
-	};
+// Fetch Linear issues on mount and load saved form state
+onMount(async () => {
+	loadFormState();
+	// Clear task description but keep other fields
+	taskDescription = '';
+	await fetchLinearIssues();
+	await fetchRepositories();
+});
 
-	// Fetch Linear issues on mount and load saved form state
-	onMount(async () => {
-		loadFormState();
-		// Clear task description but keep other fields
-		taskDescription = '';
-		await fetchLinearIssues();
-		await fetchRepositories();
-	});
+async function fetchRepositories() {
+	try {
+		const token = $authToken;
+		if (!token) return;
 
-	async function fetchRepositories() {
-		try {
-			const token = $authToken;
-			if (!token) return;
+		const res = await fetch('/api/config/repositories.list', {
+			headers: { Authorization: `Bearer ${token}` },
+		});
 
-			const res = await fetch('/api/config/repositories.list', {
-				headers: { 'Authorization': `Bearer ${token}` }
-			});
-
-			if (res.ok) {
-				const data = await res.json();
-				try {
-					preConfiguredRepos = JSON.parse(data.config.value);
-				} catch {
-					preConfiguredRepos = [];
-				}
-			}
-		} catch (err) {
-			console.error('Failed to load repositories:', err);
-		}
-	}
-
-	// Save form state on changes (using $effect for Svelte 5)
-	$effect(() => {
-		// Watch these values and save when they change
-		selectedRepoId;
-		repository;
-		baseBranch;
-		taskSource;
-		linearSearch;
-		selectedLinearIssue;
-		codingCli;
-		systemPrompt;
-		saveFormState();
-	});
-
-	async function fetchLinearIssues() {
-		loadingLinear = true;
-		linearError = null;
-
-		try {
-			const response = await fetch('/api/linear/issues', {
-				headers: { 'Authorization': `Bearer ${$authToken}` }
-			});
-
-			if (!response.ok) {
-				if (response.status === 500) {
-					const data = await response.json().catch(() => ({}));
-					if (data.message?.includes('not configured')) {
-						linearError = 'Linear API key not configured';
-						return;
-					}
-				}
-				throw new Error('Failed to fetch Linear issues');
-			}
-
-			const data = await response.json();
-			linearIssues = data.issues;
-		} catch (err) {
-			linearError = err instanceof Error ? err.message : 'Failed to load Linear issues';
-		} finally {
-			loadingLinear = false;
-		}
-	}
-
-	// Filter issues based on search
-	function getFilteredIssues(): LinearIssue[] {
-		if (!linearSearch.trim()) {
-			return linearIssues.slice(0, 20); // Show first 20 when no search
-		}
-		const search = linearSearch.toLowerCase();
-		return linearIssues.filter(issue =>
-			issue.identifier.toLowerCase().includes(search) ||
-			issue.title.toLowerCase().includes(search)
-		).slice(0, 20);
-	}
-
-	async function selectLinearIssue(issue: LinearIssue) {
-		selectedLinearIssue = issue;
-		linearSearch = `${issue.identifier}: ${issue.title}`;
-		showLinearDropdown = false;
-
-		// Fetch full issue data including comments
-		loadingLinear = true;
-		try {
-			const response = await fetch(`/api/linear/issues/${issue.id}`, {
-				headers: { 'Authorization': `Bearer ${$authToken}` }
-			});
-
-			if (!response.ok) {
-				throw new Error('Failed to fetch issue details');
-			}
-
-			const data = await response.json();
-			const issueWithComments = data.issue as LinearIssueWithComments;
-
-			// Build comprehensive task description with description + all comments
-			const parts = [
-				`# ${issue.identifier}: ${issue.title}`,
-				``,
-				`Linear Ticket: ${issue.url}`,
-				`Status: ${issue.state.name}`,
-				`Priority: ${priorityLabels[issue.priority] || 'Unknown'}`,
-			];
-
-			if (issue.project) {
-				parts.push(`Project: ${issue.project.name}`);
-			}
-
-			if (issue.labels.nodes.length > 0) {
-				parts.push(`Labels: ${issue.labels.nodes.map(l => l.name).join(', ')}`);
-			}
-
-			if (issue.estimate) {
-				parts.push(`Estimate: ${issue.estimate} points`);
-			}
-
-			parts.push('', '---', '');
-
-			// Add description
-			if (issue.description) {
-				parts.push('## Description', '', issue.description, '');
-			}
-
-			// Add all comments
-			if (issueWithComments.comments && issueWithComments.comments.nodes.length > 0) {
-				parts.push('## Comments', '');
-
-				issueWithComments.comments.nodes.forEach((comment, idx) => {
-					const author = comment.user ? comment.user.name : 'Unknown';
-					const date = new Date(comment.createdAt).toLocaleString();
-					parts.push(`### Comment ${idx + 1} by ${author} (${date})`, '', comment.body, '');
-				});
-			}
-
-			taskDescription = parts.join('\n');
-
-			// Update system prompt with Linear-specific instruction
-			systemPrompt = getBaseSystemPrompt() + linearSystemPromptAddition.replace('{TICKET_ID}', issue.identifier);
-		} catch (err) {
-			console.error('Error fetching Linear issue details:', err);
-			linearError = 'Failed to load issue details. Please try again.';
-		} finally {
-			loadingLinear = false;
-		}
-	}
-
-	function clearLinearSelection() {
-		selectedLinearIssue = null;
-		linearSearch = '';
-		taskDescription = '';
-		systemPrompt = getBaseSystemPrompt();
-	}
-
-	function getSelectedRepoDisplay(): string {
-		if (selectedRepoId === 'custom') {
-			return 'Custom Repository';
-		}
-		const repo = preConfiguredRepos.find(r => r.id === selectedRepoId);
-		return repo ? `${repo.name} (${repo.baseBranch})` : 'Select Repository';
-	}
-
-	function handleRepoSelection(repoId: string) {
-		selectedRepoId = repoId;
-		showRepoDropdown = false;
-
-		if (repoId === 'custom') {
-			// Reset to defaults for custom
-			repository = '';
-			baseBranch = 'main';
-		} else {
-			// Find and apply pre-configured repo settings
-			const repo = preConfiguredRepos.find(r => r.id === repoId);
-			if (repo) {
-				repository = repo.url;
-				baseBranch = repo.baseBranch;
+		if (res.ok) {
+			const data = await res.json();
+			try {
+				preConfiguredRepos = JSON.parse(data.config.value);
+			} catch {
+				preConfiguredRepos = [];
 			}
 		}
+	} catch (err) {
+		console.error('Failed to load repositories:', err);
 	}
+}
 
-	function handleSourceChange(source: 'manual' | 'linear') {
-		taskSource = source;
-		if (source === 'manual') {
-			clearLinearSelection();
-		}
-	}
+// Save form state on changes (using $effect for Svelte 5)
+$effect(() => {
+	// Watch these values and save when they change
+	selectedRepoId;
+	repository;
+	baseBranch;
+	taskSource;
+	linearSearch;
+	selectedLinearIssue;
+	codingCli;
+	systemPrompt;
+	saveFormState();
+});
 
-	function isManualAllowed(): boolean {
-		if (selectedRepoId === 'custom') return true;
-		const selectedRepo = preConfiguredRepos.find(r => r.id === selectedRepoId);
-		return selectedRepo?.allowManual ?? true;
-	}
+async function fetchLinearIssues() {
+	loadingLinear = true;
+	linearError = null;
 
-	async function handleSubmit() {
-		if (!repository || !taskDescription) {
-			error = 'Please fill in all required fields';
-			return;
-		}
+	try {
+		const response = await fetch('/api/linear/issues', {
+			headers: { Authorization: `Bearer ${$authToken}` },
+		});
 
-		submitting = true;
-		error = null;
-
-		try {
-			const requestBody: any = {
-				repository,
-				base_branch: baseBranch,
-				task_description: taskDescription,
-				coding_cli: codingCli,
-				system_prompt: systemPrompt || undefined,
-				user_email: $user?.email
-			};
-
-			// Include Linear metadata if task was created from Linear
-			if (taskSource === 'linear' && selectedLinearIssue) {
-				requestBody.linear_metadata = {
-					issue_id: selectedLinearIssue.id,
-					issue_identifier: selectedLinearIssue.identifier,
-					issue_url: selectedLinearIssue.url,
-					issue_title: selectedLinearIssue.title
-				};
-			}
-
-			const response = await fetch('/api/tasks', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					'Authorization': `Bearer ${$authToken}`
-				},
-				body: JSON.stringify(requestBody)
-			});
-
-			if (!response.ok) {
+		if (!response.ok) {
+			if (response.status === 500) {
 				const data = await response.json().catch(() => ({}));
-				throw new Error(data.message || 'Failed to create task');
+				if (data.message?.includes('not configured')) {
+					linearError = 'Linear API key not configured';
+					return;
+				}
 			}
+			throw new Error('Failed to fetch Linear issues');
+		}
 
-			const data = await response.json();
-			onclose();
-			goto(`/tasks/${data.task.id}`);
-		} catch (err) {
-			error = err instanceof Error ? err.message : 'Unknown error';
-		} finally {
-			submitting = false;
+		const data = await response.json();
+		linearIssues = data.issues;
+	} catch (err) {
+		linearError = err instanceof Error ? err.message : 'Failed to load Linear issues';
+	} finally {
+		loadingLinear = false;
+	}
+}
+
+// Filter issues based on search
+function getFilteredIssues(): LinearIssue[] {
+	if (!linearSearch.trim()) {
+		return linearIssues.slice(0, 20); // Show first 20 when no search
+	}
+	const search = linearSearch.toLowerCase();
+	return linearIssues
+		.filter(
+			(issue) =>
+				issue.identifier.toLowerCase().includes(search) ||
+				issue.title.toLowerCase().includes(search)
+		)
+		.slice(0, 20);
+}
+
+async function selectLinearIssue(issue: LinearIssue) {
+	selectedLinearIssue = issue;
+	linearSearch = `${issue.identifier}: ${issue.title}`;
+	showLinearDropdown = false;
+
+	// Fetch full issue data including comments
+	loadingLinear = true;
+	try {
+		const response = await fetch(`/api/linear/issues/${issue.id}`, {
+			headers: { Authorization: `Bearer ${$authToken}` },
+		});
+
+		if (!response.ok) {
+			throw new Error('Failed to fetch issue details');
+		}
+
+		const data = await response.json();
+		const issueWithComments = data.issue as LinearIssueWithComments;
+
+		// Build comprehensive task description with description + all comments
+		const parts = [
+			`# ${issue.identifier}: ${issue.title}`,
+			``,
+			`Linear Ticket: ${issue.url}`,
+			`Status: ${issue.state.name}`,
+			`Priority: ${priorityLabels[issue.priority] || 'Unknown'}`,
+		];
+
+		if (issue.project) {
+			parts.push(`Project: ${issue.project.name}`);
+		}
+
+		if (issue.labels.nodes.length > 0) {
+			parts.push(`Labels: ${issue.labels.nodes.map((l) => l.name).join(', ')}`);
+		}
+
+		if (issue.estimate) {
+			parts.push(`Estimate: ${issue.estimate} points`);
+		}
+
+		parts.push('', '---', '');
+
+		// Add description
+		if (issue.description) {
+			parts.push('## Description', '', issue.description, '');
+		}
+
+		// Add all comments
+		if (issueWithComments.comments && issueWithComments.comments.nodes.length > 0) {
+			parts.push('## Comments', '');
+
+			issueWithComments.comments.nodes.forEach((comment, idx) => {
+				const author = comment.user ? comment.user.name : 'Unknown';
+				const date = new Date(comment.createdAt).toLocaleString();
+				parts.push(`### Comment ${idx + 1} by ${author} (${date})`, '', comment.body, '');
+			});
+		}
+
+		taskDescription = parts.join('\n');
+
+		// Update system prompt with Linear-specific instruction
+		systemPrompt =
+			getBaseSystemPrompt() + linearSystemPromptAddition.replace('{TICKET_ID}', issue.identifier);
+	} catch (err) {
+		console.error('Error fetching Linear issue details:', err);
+		linearError = 'Failed to load issue details. Please try again.';
+	} finally {
+		loadingLinear = false;
+	}
+}
+
+function clearLinearSelection() {
+	selectedLinearIssue = null;
+	linearSearch = '';
+	taskDescription = '';
+	systemPrompt = getBaseSystemPrompt();
+}
+
+function getSelectedRepoDisplay(): string {
+	if (selectedRepoId === 'custom') {
+		return 'Custom Repository';
+	}
+	const repo = preConfiguredRepos.find((r) => r.id === selectedRepoId);
+	return repo ? `${repo.name} (${repo.baseBranch})` : 'Select Repository';
+}
+
+function handleRepoSelection(repoId: string) {
+	selectedRepoId = repoId;
+	showRepoDropdown = false;
+
+	if (repoId === 'custom') {
+		// Reset to defaults for custom
+		repository = '';
+		baseBranch = 'main';
+	} else {
+		// Find and apply pre-configured repo settings
+		const repo = preConfiguredRepos.find((r) => r.id === repoId);
+		if (repo) {
+			repository = repo.url;
+			baseBranch = repo.baseBranch;
 		}
 	}
+}
+
+function handleSourceChange(source: 'manual' | 'linear') {
+	taskSource = source;
+	if (source === 'manual') {
+		clearLinearSelection();
+	}
+}
+
+function isManualAllowed(): boolean {
+	if (selectedRepoId === 'custom') return true;
+	const selectedRepo = preConfiguredRepos.find((r) => r.id === selectedRepoId);
+	return selectedRepo?.allowManual ?? true;
+}
+
+async function handleSubmit() {
+	if (!repository || !taskDescription) {
+		error = 'Please fill in all required fields';
+		return;
+	}
+
+	submitting = true;
+	error = null;
+
+	try {
+		const requestBody: {
+			repository: string;
+			base_branch: string;
+			task_description: string;
+			coding_cli: string;
+			system_prompt?: string;
+			user_email?: string;
+			linear_metadata?: {
+				issue_id: string;
+				issue_identifier: string;
+				issue_url: string;
+				issue_title: string;
+			};
+		} = {
+			repository,
+			base_branch: baseBranch,
+			task_description: taskDescription,
+			coding_cli: codingCli,
+			system_prompt: systemPrompt || undefined,
+			user_email: $user?.email,
+		};
+
+		// Include Linear metadata if task was created from Linear
+		if (taskSource === 'linear' && selectedLinearIssue) {
+			requestBody.linear_metadata = {
+				issue_id: selectedLinearIssue.id,
+				issue_identifier: selectedLinearIssue.identifier,
+				issue_url: selectedLinearIssue.url,
+				issue_title: selectedLinearIssue.title,
+			};
+		}
+
+		const response = await fetch('/api/tasks', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				Authorization: `Bearer ${$authToken}`,
+			},
+			body: JSON.stringify(requestBody),
+		});
+
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.message || 'Failed to create task');
+		}
+
+		const data = await response.json();
+		onclose();
+		goto(`/tasks/${data.task.id}`);
+	} catch (err) {
+		error = err instanceof Error ? err.message : 'Unknown error';
+	} finally {
+		submitting = false;
+	}
+}
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->

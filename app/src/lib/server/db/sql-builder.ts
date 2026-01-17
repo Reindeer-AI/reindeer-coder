@@ -61,7 +61,7 @@ export class SqlBuilder {
 			TEXT: 'TEXT',
 			INTEGER: 'INTEGER',
 			REAL: 'REAL',
-			BLOB: 'BYTEA'
+			BLOB: 'BYTEA',
 		};
 
 		return typeMap[sqliteType.toUpperCase()] || sqliteType;

@@ -1,13 +1,13 @@
 <script lang="ts">
-	interface Props {
-		title: string;
-		value: string | number;
-		subtitle?: string;
-		icon?: string;
-		color?: 'green' | 'blue' | 'yellow' | 'red' | 'gray';
-	}
+interface Props {
+	title: string;
+	value: string | number;
+	subtitle?: string;
+	icon?: string;
+	color?: 'green' | 'blue' | 'yellow' | 'red' | 'gray';
+}
 
-	let { title, value, subtitle, icon, color = 'green' }: Props = $props();
+let { title, value, subtitle, icon, color = 'green' }: Props = $props();
 </script>
 
 <div class="bg-white rounded-xl border border-gray-200 p-6">

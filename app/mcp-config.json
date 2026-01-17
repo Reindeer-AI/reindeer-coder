@@ -1,10 +1,10 @@
 {
-  "mcpServers": {
-    "playwright": {
-      "command": "npx",
-      "args": ["-y", "@playwright/mcp@latest"],
-      "env": {},
-      "description": "Playwright MCP server for browser automation and testing"
-    }
-  }
+	"mcpServers": {
+		"playwright": {
+			"command": "npx",
+			"args": ["-y", "@playwright/mcp@latest"],
+			"env": {},
+			"description": "Playwright MCP server for browser automation and testing"
+		}
+	}
 }

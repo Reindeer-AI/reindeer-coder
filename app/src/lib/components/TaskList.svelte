@@ -1,148 +1,152 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
-	import { authToken, user } from '$lib/stores/auth';
-	import type { Task } from '$lib/server/db/schema';
+import { onDestroy, onMount } from 'svelte';
+import type { Task } from '$lib/server/db/schema';
+import { authToken, user } from '$lib/stores/auth';
 
-	// Runtime env vars passed from parent
-	interface Props {
-		env: {
-			GCP_PROJECT_ID: string;
-			VM_USER: string;
-			GCP_ZONE: string;
-		};
-	}
-	let { env }: Props = $props();
-
-	interface TaskWithExtras extends Task {
-		needsAttention?: boolean;
-	}
-
-	let tasks = $state<TaskWithExtras[]>([]);
-	let loading = $state(true);
-	let error = $state<string | null>(null);
-	let pollInterval: ReturnType<typeof setInterval>;
-	let filterStatus = $state<'running' | 'all'>('running');
-	let filterOwnership = $state<'mine' | 'anyone'>('mine');
-	let showCopiedModal = $state(false);
-
-	async function copySSHCommand(task: TaskWithExtras, event: Event) {
-		event.preventDefault();
-		event.stopPropagation();
-		if (!task.vm_name) return;
-
-		const project = env.GCP_PROJECT_ID;
-		const zone = task.vm_zone || env.GCP_ZONE;
-		const tmuxSession = `vibe-${task.id.slice(0, 8)}`;
-
-		const sshCommand = `gcloud compute ssh ${task.vm_name} --project=${project} --zone=${zone} --tunnel-through-iap --ssh-flag="-t" -- sudo -u ${env.VM_USER} tmux attach-session -t ${tmuxSession}`;
-
-		try {
-			await navigator.clipboard.writeText(sshCommand);
-			showCopiedModal = true;
-			setTimeout(() => { showCopiedModal = false; }, 3000);
-		} catch (err) {
-			alert('Failed to copy to clipboard');
-		}
-	}
-
-	async function copyBrowserTunnelCommand(task: TaskWithExtras, event: Event) {
-		event.preventDefault();
-		event.stopPropagation();
-		if (!task.vm_name) return;
-
-		const project = env.GCP_PROJECT_ID;
-		const zone = task.vm_zone || env.GCP_ZONE;
-
-		const tunnelCommand = `gcloud compute ssh ${task.vm_name} --project=${project} --zone=${zone} --tunnel-through-iap -- -N -L 3715:127.0.0.1:5173`;
-
-		try {
-			await navigator.clipboard.writeText(tunnelCommand);
-			showCopiedModal = true;
-			setTimeout(() => { showCopiedModal = false; }, 3000);
-		} catch (err) {
-			alert('Failed to copy to clipboard');
-		}
-	}
-
-	const statusColors: Record<string, string> = {
-		pending: 'bg-yellow-100 text-yellow-700',
-		provisioning: 'bg-blue-100 text-blue-700',
-		initializing: 'bg-cyan-100 text-cyan-700',
-		cloning: 'bg-blue-100 text-blue-700',
-		running: 'bg-green-100 text-green-700',
-		completed: 'bg-emerald-100 text-emerald-700',
-		failed: 'bg-red-100 text-red-700',
-		stopped: 'bg-gray-100 text-gray-700',
-		deleted: 'bg-gray-100 text-gray-400'
+// Runtime env vars passed from parent
+interface Props {
+	env: {
+		GCP_PROJECT_ID: string;
+		VM_USER: string;
+		GCP_ZONE: string;
 	};
+}
+let { env }: Props = $props();
 
-	const cliIcons: Record<string, string> = {
-		'claude-code': '🤖',
-		'gemini': '✨',
-		'codex': '💻'
-	};
+interface TaskWithExtras extends Task {
+	needsAttention?: boolean;
+}
 
-	let filteredTasks = $derived(
-		tasks.filter(task => {
-			// Apply status filter
-			if (filterStatus === 'running' && task.status !== 'running') {
-				return false;
-			}
+let tasks = $state<TaskWithExtras[]>([]);
+let loading = $state(true);
+let error = $state<string | null>(null);
+let pollInterval: ReturnType<typeof setInterval>;
+let filterStatus = $state<'running' | 'all'>('running');
+let filterOwnership = $state<'mine' | 'anyone'>('mine');
+let showCopiedModal = $state(false);
 
-			// Apply ownership filter
-			if (filterOwnership === 'mine' && $user?.email && task.user_email !== $user.email) {
-				return false;
-			}
+async function copySSHCommand(task: TaskWithExtras, event: Event) {
+	event.preventDefault();
+	event.stopPropagation();
+	if (!task.vm_name) return;
 
-			return true;
-		})
-	);
+	const project = env.GCP_PROJECT_ID;
+	const zone = task.vm_zone || env.GCP_ZONE;
+	const tmuxSession = `vibe-${task.id.slice(0, 8)}`;
 
-	async function fetchTasks() {
-		const token = $authToken;
-		if (!token) return;
+	const sshCommand = `gcloud compute ssh ${task.vm_name} --project=${project} --zone=${zone} --tunnel-through-iap --ssh-flag="-t" -- sudo -u ${env.VM_USER} tmux attach-session -t ${tmuxSession}`;
 
-		try {
-			const response = await fetch('/api/tasks', {
-				headers: { 'Authorization': `Bearer ${token}` }
-			});
+	try {
+		await navigator.clipboard.writeText(sshCommand);
+		showCopiedModal = true;
+		setTimeout(() => {
+			showCopiedModal = false;
+		}, 3000);
+	} catch {
+		alert('Failed to copy to clipboard');
+	}
+}
 
-			if (!response.ok) {
-				throw new Error('Failed to fetch tasks');
-			}
+async function copyBrowserTunnelCommand(task: TaskWithExtras, event: Event) {
+	event.preventDefault();
+	event.stopPropagation();
+	if (!task.vm_name) return;
 
-			const data = await response.json();
-			tasks = data.tasks;
-			error = null;
-		} catch (err) {
-			error = err instanceof Error ? err.message : 'Unknown error';
-		} finally {
-			loading = false;
+	const project = env.GCP_PROJECT_ID;
+	const zone = task.vm_zone || env.GCP_ZONE;
+
+	const tunnelCommand = `gcloud compute ssh ${task.vm_name} --project=${project} --zone=${zone} --tunnel-through-iap -- -N -L 3715:127.0.0.1:5173`;
+
+	try {
+		await navigator.clipboard.writeText(tunnelCommand);
+		showCopiedModal = true;
+		setTimeout(() => {
+			showCopiedModal = false;
+		}, 3000);
+	} catch {
+		alert('Failed to copy to clipboard');
+	}
+}
+
+const statusColors: Record<string, string> = {
+	pending: 'bg-yellow-100 text-yellow-700',
+	provisioning: 'bg-blue-100 text-blue-700',
+	initializing: 'bg-cyan-100 text-cyan-700',
+	cloning: 'bg-blue-100 text-blue-700',
+	running: 'bg-green-100 text-green-700',
+	completed: 'bg-emerald-100 text-emerald-700',
+	failed: 'bg-red-100 text-red-700',
+	stopped: 'bg-gray-100 text-gray-700',
+	deleted: 'bg-gray-100 text-gray-400',
+};
+
+const cliIcons: Record<string, string> = {
+	'claude-code': '🤖',
+	gemini: '✨',
+	codex: '💻',
+};
+
+let filteredTasks = $derived(
+	tasks.filter((task) => {
+		// Apply status filter
+		if (filterStatus === 'running' && task.status !== 'running') {
+			return false;
 		}
+
+		// Apply ownership filter
+		if (filterOwnership === 'mine' && $user?.email && task.user_email !== $user.email) {
+			return false;
+		}
+
+		return true;
+	})
+);
+
+async function fetchTasks() {
+	const token = $authToken;
+	if (!token) return;
+
+	try {
+		const response = await fetch('/api/tasks', {
+			headers: { Authorization: `Bearer ${token}` },
+		});
+
+		if (!response.ok) {
+			throw new Error('Failed to fetch tasks');
+		}
+
+		const data = await response.json();
+		tasks = data.tasks;
+		error = null;
+	} catch (err) {
+		error = err instanceof Error ? err.message : 'Unknown error';
+	} finally {
+		loading = false;
 	}
+}
 
-	function formatDate(dateStr: string): string {
-		const date = new Date(dateStr);
-		const now = new Date();
-		const diffMs = now.getTime() - date.getTime();
-		const diffMins = Math.floor(diffMs / 60000);
-		const diffHours = Math.floor(diffMs / 3600000);
-		const diffDays = Math.floor(diffMs / 86400000);
+function formatDate(dateStr: string): string {
+	const date = new Date(dateStr);
+	const now = new Date();
+	const diffMs = now.getTime() - date.getTime();
+	const diffMins = Math.floor(diffMs / 60000);
+	const diffHours = Math.floor(diffMs / 3600000);
+	const diffDays = Math.floor(diffMs / 86400000);
 
-		if (diffMins < 1) return 'just now';
-		if (diffMins < 60) return `${diffMins}m ago`;
-		if (diffHours < 24) return `${diffHours}h ago`;
-		return `${diffDays}d ago`;
-	}
+	if (diffMins < 1) return 'just now';
+	if (diffMins < 60) return `${diffMins}m ago`;
+	if (diffHours < 24) return `${diffHours}h ago`;
+	return `${diffDays}d ago`;
+}
 
-	onMount(() => {
-		fetchTasks();
-		pollInterval = setInterval(fetchTasks, 10000);
-	});
+onMount(() => {
+	fetchTasks();
+	pollInterval = setInterval(fetchTasks, 10000);
+});
 
-	onDestroy(() => {
-		if (pollInterval) clearInterval(pollInterval);
-	});
+onDestroy(() => {
+	if (pollInterval) clearInterval(pollInterval);
+});
 </script>
 
 {#if loading}

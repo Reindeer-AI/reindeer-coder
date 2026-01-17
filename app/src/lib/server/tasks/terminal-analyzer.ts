@@ -76,9 +76,9 @@ IMPORTANT:
 			messages: [
 				{
 					role: 'user',
-					content: prompt
-				}
-			]
+					content: prompt,
+				},
+			],
 		});
 
 		// Extract the text response
@@ -106,7 +106,7 @@ IMPORTANT:
 		// Default to still_working on error to be safe
 		return {
 			state: 'still_working',
-			reasoning: `Analysis failed: ${error instanceof Error ? error.message : String(error)}`
+			reasoning: `Analysis failed: ${error instanceof Error ? error.message : String(error)}`,
 		};
 	}
 }

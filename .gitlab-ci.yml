@@ -4,6 +4,16 @@
 stages:
   - triggers
 
+# Lint Pipeline - Code quality checks using pre-commit hooks
+lint-pipeline:
+  stage: triggers
+  trigger:
+    include: ci/pipelines/lint.yaml
+    strategy: depend
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'push' && $CI_COMMIT_BRANCH !~ /(dev|main)/
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
 # Build Pipeline - Docker image build validation
 build-pipeline:
   stage: triggers

@@ -1,110 +1,110 @@
 <script lang="ts">
-	import { authToken } from '$lib/stores/auth';
-	import type { Task } from '$lib/server/db/schema';
+import type { Task } from '$lib/server/db/schema';
+import { authToken } from '$lib/stores/auth';
 
-	interface Props {
-		task: Task;
-		ondeleted?: () => void;
-		env: {
-			GCP_PROJECT_ID: string;
-			VM_USER: string;
-			GCP_ZONE: string;
-		};
-	}
-
-	let { task, ondeleted, env }: Props = $props();
-
-	let deleting = $state(false);
-	let showCopiedModal = $state(false);
-
-	const statusColors: Record<string, string> = {
-		pending: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50',
-		provisioning: 'bg-blue-500/20 text-blue-400 border-blue-500/50',
-		cloning: 'bg-blue-500/20 text-blue-400 border-blue-500/50',
-		running: 'bg-green-500/20 text-green-400 border-green-500/50',
-		completed: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50',
-		failed: 'bg-red-500/20 text-red-400 border-red-500/50',
-		stopped: 'bg-gray-500/20 text-gray-400 border-gray-500/50'
+interface Props {
+	task: Task;
+	ondeleted?: () => void;
+	env: {
+		GCP_PROJECT_ID: string;
+		VM_USER: string;
+		GCP_ZONE: string;
 	};
+}
 
-	const cliLabels: Record<string, string> = {
-		'claude-code': 'Claude Code',
-		'gemini': 'Gemini',
-		'codex': 'Codex'
-	};
+let { task, ondeleted, env }: Props = $props();
 
-	async function deleteTask() {
-		if (!confirm('Are you sure you want to delete this task?')) return;
+let deleting = $state(false);
+let showCopiedModal = $state(false);
 
-		deleting = true;
-		try {
-			const response = await fetch(`/api/tasks/${task.id}`, {
-				method: 'DELETE',
-				headers: {
-					'Authorization': `Bearer ${$authToken}`
-				}
-			});
+const statusColors: Record<string, string> = {
+	pending: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50',
+	provisioning: 'bg-blue-500/20 text-blue-400 border-blue-500/50',
+	cloning: 'bg-blue-500/20 text-blue-400 border-blue-500/50',
+	running: 'bg-green-500/20 text-green-400 border-green-500/50',
+	completed: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50',
+	failed: 'bg-red-500/20 text-red-400 border-red-500/50',
+	stopped: 'bg-gray-500/20 text-gray-400 border-gray-500/50',
+};
 
-			if (!response.ok) {
-				throw new Error('Failed to delete task');
-			}
+const cliLabels: Record<string, string> = {
+	'claude-code': 'Claude Code',
+	gemini: 'Gemini',
+	codex: 'Codex',
+};
 
-			ondeleted?.();
-		} catch (err) {
-			alert(err instanceof Error ? err.message : 'Failed to delete task');
-		} finally {
-			deleting = false;
+async function deleteTask() {
+	if (!confirm('Are you sure you want to delete this task?')) return;
+
+	deleting = true;
+	try {
+		const response = await fetch(`/api/tasks/${task.id}`, {
+			method: 'DELETE',
+			headers: {
+				Authorization: `Bearer ${$authToken}`,
+			},
+		});
+
+		if (!response.ok) {
+			throw new Error('Failed to delete task');
 		}
+
+		ondeleted?.();
+	} catch (err) {
+		alert(err instanceof Error ? err.message : 'Failed to delete task');
+	} finally {
+		deleting = false;
 	}
+}
 
-	function formatDate(dateStr: string | null): string {
-		if (!dateStr) return '-';
-		return new Date(dateStr).toLocaleString();
+function formatDate(dateStr: string | null): string {
+	if (!dateStr) return '-';
+	return new Date(dateStr).toLocaleString();
+}
+
+function extractRepoName(url: string): string {
+	const match = url.match(/\/([^/]+?)(?:\.git)?$/);
+	return match ? match[1] : url;
+}
+
+async function copySSHCommand() {
+	if (!task || !task.vm_name) return;
+
+	const project = env.GCP_PROJECT_ID;
+	const zone = task.vm_zone || env.GCP_ZONE;
+	const tmuxSession = `vibe-${task.id.slice(0, 8)}`;
+
+	const sshCommand = `gcloud compute ssh ${task.vm_name} --project=${project} --zone=${zone} --tunnel-through-iap --ssh-flag="-t" -- sudo -u ${env.VM_USER} tmux attach-session -t ${tmuxSession}`;
+
+	try {
+		await navigator.clipboard.writeText(sshCommand);
+		showCopiedModal = true;
+		setTimeout(() => {
+			showCopiedModal = false;
+		}, 3000);
+	} catch {
+		alert('Failed to copy to clipboard');
 	}
+}
 
-	function extractRepoName(url: string): string {
-		const match = url.match(/\/([^\/]+?)(?:\.git)?$/);
-		return match ? match[1] : url;
+async function copyBrowserTunnelCommand() {
+	if (!task || !task.vm_name) return;
+
+	const project = env.GCP_PROJECT_ID;
+	const zone = task.vm_zone || env.GCP_ZONE;
+
+	const tunnelCommand = `gcloud compute ssh ${task.vm_name} --project=${project} --zone=${zone} --tunnel-through-iap -- -N -L 3715:127.0.0.1:5173`;
+
+	try {
+		await navigator.clipboard.writeText(tunnelCommand);
+		showCopiedModal = true;
+		setTimeout(() => {
+			showCopiedModal = false;
+		}, 3000);
+	} catch {
+		alert('Failed to copy to clipboard');
 	}
-
-	async function copySSHCommand() {
-		if (!task || !task.vm_name) return;
-
-		const project = env.GCP_PROJECT_ID;
-		const zone = task.vm_zone || env.GCP_ZONE;
-		const tmuxSession = `vibe-${task.id.slice(0, 8)}`;
-
-		const sshCommand = `gcloud compute ssh ${task.vm_name} --project=${project} --zone=${zone} --tunnel-through-iap --ssh-flag="-t" -- sudo -u ${env.VM_USER} tmux attach-session -t ${tmuxSession}`;
-
-		try {
-			await navigator.clipboard.writeText(sshCommand);
-			showCopiedModal = true;
-			setTimeout(() => {
-				showCopiedModal = false;
-			}, 3000);
-		} catch (err) {
-			alert('Failed to copy to clipboard');
-		}
-	}
-
-	async function copyBrowserTunnelCommand() {
-		if (!task || !task.vm_name) return;
-
-		const project = env.GCP_PROJECT_ID;
-		const zone = task.vm_zone || env.GCP_ZONE;
-
-		const tunnelCommand = `gcloud compute ssh ${task.vm_name} --project=${project} --zone=${zone} --tunnel-through-iap -- -N -L 3715:127.0.0.1:5173`;
-
-		try {
-			await navigator.clipboard.writeText(tunnelCommand);
-			showCopiedModal = true;
-			setTimeout(() => {
-				showCopiedModal = false;
-			}, 3000);
-		} catch (err) {
-			alert('Failed to copy to clipboard');
-		}
-	}
+}
 </script>
 
 <a href="/tasks/{task.id}" class="block bg-vibe-dark rounded-xl border border-vibe-purple/20 overflow-hidden hover:border-vibe-purple/40 transition-colors">

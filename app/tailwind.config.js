@@ -11,9 +11,9 @@ export default {
 				'reindeer-cream': '#f5f3ef',
 				// Terminal dark theme colors (keep these for terminal)
 				'terminal-bg': '#050f0f',
-				'terminal-surface': '#0a1a1a'
-			}
-		}
+				'terminal-surface': '#0a1a1a',
+			},
+		},
 	},
-	plugins: []
+	plugins: [],
 };

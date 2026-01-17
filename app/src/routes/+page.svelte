@@ -1,20 +1,20 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { initAuth0, isAuthenticated, user, login, logout, authToken } from '$lib/stores/auth';
-	import TaskList from '$lib/components/TaskList.svelte';
-	import CreateTaskModal from '$lib/components/CreateTaskModal.svelte';
+import { onMount } from 'svelte';
+import CreateTaskModal from '$lib/components/CreateTaskModal.svelte';
+import TaskList from '$lib/components/TaskList.svelte';
+import { authToken, initAuth0, isAuthenticated, login, logout, user } from '$lib/stores/auth';
 
-	// Runtime env vars from layout server load
-	let { data } = $props();
+// Runtime env vars from layout server load
+let { data } = $props();
 
-	let loading = $state(true);
-	let showCreateModal = $state(false);
-	let showUserDropdown = $state(false);
+let loading = $state(true);
+let showCreateModal = $state(false);
+let showUserDropdown = $state(false);
 
-	onMount(async () => {
-		await initAuth0();
-		loading = false;
-	});
+onMount(async () => {
+	await initAuth0();
+	loading = false;
+});
 </script>
 
 <div class="min-h-screen bg-reindeer-cream">

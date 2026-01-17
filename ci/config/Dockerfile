@@ -18,7 +18,8 @@ ENV VITE_AUTH0_AUDIENCE=${VITE_AUTH0_AUDIENCE}
 ENV VITE_AUTH0_ORG_ID=${VITE_AUTH0_ORG_ID}
 
 # Install build dependencies for node-pty (requires Python and build tools)
-RUN apt-get update && apt-get install -y \
+# hadolint ignore=DL3008
+RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     make \
     g++ \
@@ -41,7 +42,9 @@ FROM node:20-bookworm-slim
 WORKDIR /app
 
 # Install runtime dependencies for node-pty, gcloud SDK, and SSH
-RUN apt-get update && apt-get install -y \
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+# hadolint ignore=DL3008
+RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     make \
     g++ \
@@ -52,7 +55,7 @@ RUN apt-get update && apt-get install -y \
     openssh-client \
     && echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list \
     && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg \
-    && apt-get update && apt-get install -y google-cloud-cli \
+    && apt-get update && apt-get install -y --no-install-recommends google-cloud-cli \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy dependency manifests

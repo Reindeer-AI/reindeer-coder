@@ -1,4 +1,4 @@
-// @ts-ignore - Optional dependency, only needed for direct VM management
+// @ts-expect-error - Optional dependency, only needed for direct VM management
 import { InstancesClient, type protos } from '@google-cloud/compute';
 import type { Task } from '../db/schema';
 
@@ -24,9 +24,9 @@ export async function createVM(name: string, zone: string, task: Task): Promise<
 				autoDelete: true,
 				initializeParams: {
 					sourceImage: `projects/${IMAGE_PROJECT}/global/images/family/${IMAGE_FAMILY}`,
-					diskSizeGb: '50'
-				}
-			}
+					diskSizeGb: '50',
+				},
+			},
 		],
 		networkInterfaces: [
 			{
@@ -34,42 +34,42 @@ export async function createVM(name: string, zone: string, task: Task): Promise<
 				accessConfigs: [
 					{
 						name: 'External NAT',
-						type: 'ONE_TO_ONE_NAT'
-					}
-				]
-			}
+						type: 'ONE_TO_ONE_NAT',
+					},
+				],
+			},
 		],
 		metadata: {
 			items: [
 				{
 					key: 'startup-script',
-					value: startupScript
+					value: startupScript,
 				},
 				{
 					key: 'ssh-keys',
-					value: `vibe:${process.env.SSH_PUBLIC_KEY || ''}`
-				}
-			]
+					value: `vibe:${process.env.SSH_PUBLIC_KEY || ''}`,
+				},
+			],
 		},
 		labels: {
 			'vibe-task': task.id.slice(0, 63),
-			'coding-cli': task.coding_cli
+			'coding-cli': task.coding_cli,
 		},
 		serviceAccounts: [
 			{
 				email: 'default',
-				scopes: ['https://www.googleapis.com/auth/cloud-platform']
-			}
+				scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+			},
 		],
 		tags: {
-			items: ['vibe-coding', 'allow-ssh']
-		}
+			items: ['vibe-coding', 'allow-ssh'],
+		},
 	};
 
 	const [operation] = await compute.insert({
 		project: PROJECT_ID,
 		zone,
-		instanceResource: instance
+		instanceResource: instance,
 	});
 
 	// Wait for the operation to complete
@@ -79,7 +79,7 @@ export async function createVM(name: string, zone: string, task: Task): Promise<
 /**
  * Generate startup script for VM
  */
-function generateStartupScript(task: Task): string {
+function generateStartupScript(_task: Task): string {
 	return `#!/bin/bash
 set -e
 
@@ -128,7 +128,7 @@ export async function waitForVM(name: string, zone: string, timeoutMs = 300000):
 		const [instance] = await compute.get({
 			project: PROJECT_ID,
 			zone,
-			instance: name
+			instance: name,
 		});
 
 		if (instance.status === 'RUNNING') {
@@ -150,7 +150,7 @@ export async function getVMExternalIP(name: string, zone: string): Promise<strin
 	const [instance] = await compute.get({
 		project: PROJECT_ID,
 		zone,
-		instance: name
+		instance: name,
 	});
 
 	const networkInterface = instance.networkInterfaces?.[0];
@@ -166,7 +166,7 @@ export async function deleteVM(name: string, zone: string): Promise<void> {
 		const [operation] = await compute.delete({
 			project: PROJECT_ID,
 			zone,
-			instance: name
+			instance: name,
 		});
 
 		await operation.promise();
@@ -183,7 +183,7 @@ export async function listVibeVMs(zone: string): Promise<string[]> {
 	const [instances] = await compute.list({
 		project: PROJECT_ID,
 		zone,
-		filter: 'labels.vibe-task:*'
+		filter: 'labels.vibe-task:*',
 	});
 
 	return (instances || []).map((i: { name?: string }) => i.name || '').filter(Boolean);

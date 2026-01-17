@@ -1,15 +1,25 @@
-import { spawn } from 'child_process';
-import { writeFileSync, mkdirSync, existsSync, readFileSync, unlinkSync } from 'fs';
-import { join } from 'path';
+import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { env } from '$env/dynamic/private';
-import { createTask, getActiveTasksWithLinearMetadata, getTasksNeedingAttention, markConnectionCommandsPosted, markAttentionCheckPosted } from '../db';
-import { startTask, completeTask, sendInstruction, getActiveConnection, manualReconnect } from '../vm/orchestrator';
-import type { TaskCreateInput } from '../db/schema';
-import { analyzeTerminalOutput } from './terminal-analyzer';
-import { readTerminalFile } from '../terminal-storage';
-import { CodeReviewHandler } from './code-review-handler';
 import { configService } from '../config-service';
-import { getLinearApiKey, getAnthropicApiKey } from '../secrets';
+import {
+	createTask,
+	getActiveTasksWithLinearMetadata,
+	getTasksNeedingAttention,
+	markAttentionCheckPosted,
+	markConnectionCommandsPosted,
+} from '../db';
+import type { TaskCreateInput } from '../db/schema';
+import { getLinearApiKey } from '../secrets';
+import { readTerminalFile } from '../terminal-storage';
+import {
+	completeTask,
+	getActiveConnection,
+	manualReconnect,
+	sendInstruction,
+	startTask,
+} from '../vm/orchestrator';
+import { CodeReviewHandler } from './code-review-handler';
+import { analyzeTerminalOutput } from './terminal-analyzer';
 
 interface PendingTask {
 	issueId: string;
@@ -131,14 +141,21 @@ class LinearAgentMonitor {
 
 			// Check if output file exists (task completed)
 			if (existsSync(task.outputFile)) {
-				console.log(`[LinearAgentMonitor] Task completed for ${task.issueIdentifier}, posting results...`);
+				console.log(
+					`[LinearAgentMonitor] Task completed for ${task.issueIdentifier}, posting results...`
+				);
 				try {
 					const planOutput = readFileSync(task.outputFile, 'utf-8');
 
 					// Check if it's an error
 					if (planOutput.startsWith('ERROR:')) {
-						console.error(`[LinearAgentMonitor] Claude failed for ${task.issueIdentifier}: ${planOutput}`);
-						await this.addCommentToIssue(task.issueId, `❌ Agent task failed: ${planOutput}\n\n---\n🤖 *Claude Code*`);
+						console.error(
+							`[LinearAgentMonitor] Claude failed for ${task.issueIdentifier}: ${planOutput}`
+						);
+						await this.addCommentToIssue(
+							task.issueId,
+							`❌ Agent task failed: ${planOutput}\n\n---\n🤖 *Claude Code*`
+						);
 						await this.removeLabelFromIssueById(task.issueId, task.workingLabelId);
 						await this.addLabelToIssue(task.issueId, 'Agent/blocked');
 					} else {
@@ -156,15 +173,26 @@ class LinearAgentMonitor {
 					// Clean up
 					unlinkSync(task.outputFile);
 				} catch (error) {
-					console.error(`[LinearAgentMonitor] Error posting results for ${task.issueIdentifier}:`, error);
-					await this.addCommentToIssue(task.issueId, `❌ Agent task failed: ${error instanceof Error ? error.message : String(error)}`);
+					console.error(
+						`[LinearAgentMonitor] Error posting results for ${task.issueIdentifier}:`,
+						error
+					);
+					await this.addCommentToIssue(
+						task.issueId,
+						`❌ Agent task failed: ${error instanceof Error ? error.message : String(error)}`
+					);
 				}
 				this.pendingTasks.delete(taskKey);
 			}
 			// Check for timeout
 			else if (elapsed > this.TASK_TIMEOUT_MS) {
-				console.log(`[LinearAgentMonitor] Task timeout for ${task.issueIdentifier} after ${Math.round(elapsed / 1000)}s`);
-				await this.addCommentToIssue(task.issueId, `⚠️ Agent task timed out after ${Math.round(elapsed / 60000)} minutes. The task may still be running in the background.\n\n---\n🤖 *Claude Code*`);
+				console.log(
+					`[LinearAgentMonitor] Task timeout for ${task.issueIdentifier} after ${Math.round(elapsed / 1000)}s`
+				);
+				await this.addCommentToIssue(
+					task.issueId,
+					`⚠️ Agent task timed out after ${Math.round(elapsed / 60000)} minutes. The task may still be running in the background.\n\n---\n🤖 *Claude Code*`
+				);
 				await this.removeLabelFromIssueById(task.issueId, task.workingLabelId);
 				await this.addLabelToIssue(task.issueId, 'Agent/blocked');
 				this.pendingTasks.delete(taskKey);
@@ -176,7 +204,9 @@ class LinearAgentMonitor {
 		// Get all active tasks with Linear metadata
 		const activeTasks = await getActiveTasksWithLinearMetadata();
 
-		console.log(`[LinearAgentMonitor] checkCompletedLinearTickets: found ${activeTasks.length} active tasks with Linear metadata`);
+		console.log(
+			`[LinearAgentMonitor] checkCompletedLinearTickets: found ${activeTasks.length} active tasks with Linear metadata`
+		);
 
 		if (activeTasks.length === 0) {
 			return; // No active tasks to check
@@ -193,15 +223,21 @@ class LinearAgentMonitor {
 				const issueStatus = await this.fetchLinearIssueStatus(task.metadata?.linear?.issue_id);
 
 				if (!issueStatus) {
-					console.error(`[LinearAgentMonitor] Could not fetch status for issue ${task.metadata?.linear?.issue_identifier}`);
+					console.error(
+						`[LinearAgentMonitor] Could not fetch status for issue ${task.metadata?.linear?.issue_identifier}`
+					);
 					continue;
 				}
 
-				console.log(`[LinearAgentMonitor] Issue ${task.metadata?.linear?.issue_identifier} status: ${issueStatus.state.type}`);
+				console.log(
+					`[LinearAgentMonitor] Issue ${task.metadata?.linear?.issue_identifier} status: ${issueStatus.state.type}`
+				);
 
 				// Check if the issue is marked as done
 				if (issueStatus.state.type === 'completed') {
-					console.log(`[LinearAgentMonitor] Issue ${task.metadata?.linear?.issue_identifier} is marked as done, completing task ${task.id}`);
+					console.log(
+						`[LinearAgentMonitor] Issue ${task.metadata?.linear?.issue_identifier} is marked as done, completing task ${task.id}`
+					);
 
 					// Complete the task (release resources)
 					try {
@@ -217,24 +253,35 @@ class LinearAgentMonitor {
 					if (workingLabelId) {
 						try {
 							await this.removeLabelFromIssueById(task.metadata?.linear?.issue_id, workingLabelId);
-							console.log(`[LinearAgentMonitor] Removed Agent/working label from ${task.metadata?.linear?.issue_identifier}`);
+							console.log(
+								`[LinearAgentMonitor] Removed Agent/working label from ${task.metadata?.linear?.issue_identifier}`
+							);
 						} catch (error) {
-							console.error(`[LinearAgentMonitor] Failed to remove Agent/working label from ${task.metadata?.linear?.issue_identifier}:`, error);
+							console.error(
+								`[LinearAgentMonitor] Failed to remove Agent/working label from ${task.metadata?.linear?.issue_identifier}:`,
+								error
+							);
 						}
 					}
 
 					// Add comment to Linear ticket
 					const taskUrl = `${env.APP_URL}/tasks/${task.id}`;
-					const comment = `✅ **Vibe Coding task marked as complete**\n\n` +
+					const comment =
+						`✅ **Vibe Coding task marked as complete**\n\n` +
 						`The task resources have been released as this ticket was marked as done.\n\n` +
 						`[View Task Details →](${taskUrl})\n\n` +
 						`---\n🤖 *Claude Code*`;
 
 					await this.addCommentToIssue(task.metadata?.linear?.issue_id, comment);
-					console.log(`[LinearAgentMonitor] Added completion comment to ${task.metadata?.linear?.issue_identifier}`);
+					console.log(
+						`[LinearAgentMonitor] Added completion comment to ${task.metadata?.linear?.issue_identifier}`
+					);
 				}
 			} catch (error) {
-				console.error(`[LinearAgentMonitor] Error checking completed ticket for task ${task.id}:`, error);
+				console.error(
+					`[LinearAgentMonitor] Error checking completed ticket for task ${task.id}:`,
+					error
+				);
 			}
 		}
 	}
@@ -302,7 +349,10 @@ class LinearAgentMonitor {
 				if (analysis.state === 'agent_done_waiting') {
 					// Agent is done - remove working label, add review label
 					await this.removeLabelFromIssueById(task.metadata?.linear?.issue_id, workingLabelId);
-					await this.addLabelToIssue(task.metadata?.linear?.issue_id, 'Human/Review Implementation');
+					await this.addLabelToIssue(
+						task.metadata?.linear?.issue_id,
+						'Human/Review Implementation'
+					);
 
 					// Add comment with summary and MR link
 					let comment = `## ✅ Implementation Complete\n\n`;
@@ -315,7 +365,9 @@ class LinearAgentMonitor {
 
 					await this.addCommentToIssue(task.metadata?.linear?.issue_id, comment);
 
-					console.log(`[LinearAgentMonitor] Marked ${task.metadata?.linear?.issue_identifier} as done`);
+					console.log(
+						`[LinearAgentMonitor] Marked ${task.metadata?.linear?.issue_identifier} as done`
+					);
 				} else if (analysis.state === 'needs_user_input') {
 					// Agent needs input - keep working label but add comment
 					const comment =
@@ -411,9 +463,7 @@ class LinearAgentMonitor {
 
 		for (const issue of issues) {
 			// Find labels in the "Agent" group (parent.name === 'Agent')
-			const agentLabel = issue.labels.nodes.find((label) =>
-				label.parent?.name === 'Agent'
-			);
+			const agentLabel = issue.labels.nodes.find((label) => label.parent?.name === 'Agent');
 
 			if (!agentLabel) {
 				continue;
@@ -425,7 +475,9 @@ class LinearAgentMonitor {
 				continue;
 			}
 
-			console.log(`[LinearAgentMonitor] Found agent task: ${issue.identifier} - Agent/${agentLabel.name}`);
+			console.log(
+				`[LinearAgentMonitor] Found agent task: ${issue.identifier} - Agent/${agentLabel.name}`
+			);
 
 			// Task type is the label name itself (e.g., "plan")
 			const taskType = agentLabel.name.toLowerCase();
@@ -447,7 +499,10 @@ class LinearAgentMonitor {
 			} catch (error) {
 				console.error(`[LinearAgentMonitor] Error executing task for ${issue.identifier}:`, error);
 				// Add error comment to issue
-				await this.addCommentToIssue(issue.id, `❌ Agent task failed: ${error instanceof Error ? error.message : String(error)}\n\n---\n🤖 *Claude Code*`);
+				await this.addCommentToIssue(
+					issue.id,
+					`❌ Agent task failed: ${error instanceof Error ? error.message : String(error)}\n\n---\n🤖 *Claude Code*`
+				);
 			}
 		}
 	}
@@ -458,7 +513,7 @@ class LinearAgentMonitor {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				Authorization: apiKey
+				Authorization: apiKey,
 			},
 			body: JSON.stringify({
 				query: `
@@ -493,8 +548,8 @@ class LinearAgentMonitor {
 							}
 						}
 					}
-				`
-			})
+				`,
+			}),
 		});
 
 		if (!response.ok) {
@@ -510,13 +565,15 @@ class LinearAgentMonitor {
 		return data.data?.issues?.nodes || [];
 	}
 
-	private async fetchLinearIssueStatus(issueId: string): Promise<{ state: { type: string } } | null> {
+	private async fetchLinearIssueStatus(
+		issueId: string
+	): Promise<{ state: { type: string } } | null> {
 		const apiKey = await this.getApiKey();
 		const response = await fetch('https://api.linear.app/graphql', {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				Authorization: apiKey
+				Authorization: apiKey,
 			},
 			body: JSON.stringify({
 				query: `
@@ -530,9 +587,9 @@ class LinearAgentMonitor {
 					}
 				`,
 				variables: {
-					id: issueId
-				}
-			})
+					id: issueId,
+				},
+			}),
 		});
 
 		if (!response.ok) {
@@ -548,7 +605,11 @@ class LinearAgentMonitor {
 		return data.data?.issue || null;
 	}
 
-	private async executeTask(issue: LinearIssue, taskType: string, agentLabelId: string): Promise<boolean> {
+	private async executeTask(
+		issue: LinearIssue,
+		taskType: string,
+		agentLabelId: string
+	): Promise<boolean> {
 		switch (taskType) {
 			case 'implement':
 				return await this.executeImplementTask(issue, agentLabelId);
@@ -566,11 +627,13 @@ class LinearAgentMonitor {
 				return false; // Don't mark as processed, allow retries
 			default:
 				console.log(`[LinearAgentMonitor] Unknown task type: ${taskType}`);
-				await this.addCommentToIssue(issue.id, `⚠️ Unknown agent task type: "${taskType}". Supported types: implement, fix implementation, code review`);
+				await this.addCommentToIssue(
+					issue.id,
+					`⚠️ Unknown agent task type: "${taskType}". Supported types: implement, fix implementation, code review`
+				);
 				return false; // Don't mark as processed
 		}
 	}
-
 
 	private async executeImplementTask(issue: LinearIssue, agentLabelId: string): Promise<boolean> {
 		console.log(`[LinearAgentMonitor] Executing implement task for ${issue.identifier}`);
@@ -583,8 +646,8 @@ class LinearAgentMonitor {
 			await this.addCommentToIssue(
 				issue.id,
 				'❌ **Agent task failed**: Required label "Agent/working" not found in Linear.\n\n' +
-				'Please create a "working" label under the "Agent" parent group.\n\n' +
-				'---\n🤖 *Claude Code*'
+					'Please create a "working" label under the "Agent" parent group.\n\n' +
+					'---\n🤖 *Claude Code*'
 			);
 			return false; // Failed, allow retry
 		}
@@ -592,19 +655,23 @@ class LinearAgentMonitor {
 		// Swap labels immediately to prevent duplicate pickup
 		await this.removeLabelFromIssue(issue.id, agentLabelId);
 		await this.addLabelToIssueById(issue.id, workingLabelId);
-		console.log(`[LinearAgentMonitor] Swapped Agent/implement -> Agent/working for ${issue.identifier}`);
+		console.log(
+			`[LinearAgentMonitor] Swapped Agent/implement -> Agent/working for ${issue.identifier}`
+		);
 
 		// Get repo from label in "Repo" group
 		const repoLabel = issue.labels.nodes.find((label) => label.parent?.name === 'Repo');
 
 		if (!repoLabel) {
-			console.log(`[LinearAgentMonitor] No repo specified for ${issue.identifier}, marking as blocked`);
+			console.log(
+				`[LinearAgentMonitor] No repo specified for ${issue.identifier}, marking as blocked`
+			);
 			await this.addCommentToIssue(
 				issue.id,
 				'⚠️ **Agent task blocked**: No repository specified.\n\n' +
-				'Please add a label from the **Repo** group to specify which repository to work on.\n\n' +
-				'Available repositories should be accessible by the Vibe Coding system.\n\n' +
-				'---\n🤖 *Claude Code*'
+					'Please add a label from the **Repo** group to specify which repository to work on.\n\n' +
+					'Available repositories should be accessible by the Vibe Coding system.\n\n' +
+					'---\n🤖 *Claude Code*'
 			);
 			await this.removeLabelFromIssueById(issue.id, workingLabelId);
 			await this.addLabelToIssue(issue.id, 'Agent/blocked');
@@ -614,7 +681,11 @@ class LinearAgentMonitor {
 		const repoName = repoLabel.name;
 
 		// Build repository URL from configured base URL and org
-		const gitBaseUrl = await configService.get('git.base_url', 'https://gitlab.com', 'GIT_BASE_URL');
+		const gitBaseUrl = await configService.get(
+			'git.base_url',
+			'https://gitlab.com',
+			'GIT_BASE_URL'
+		);
 		const gitOrg = await configService.get('git.org', '', 'GIT_ORG');
 		if (!gitOrg) {
 			throw new Error('git.org configuration is required');
@@ -622,10 +693,18 @@ class LinearAgentMonitor {
 		const repoUrl = `${gitBaseUrl}/${gitOrg}/${repoName}.git`;
 
 		// Get default base branch from config
-		const baseBranch = await configService.get('git.default_base_branch', 'main', 'GIT_DEFAULT_BASE_BRANCH');
+		const baseBranch = await configService.get(
+			'git.default_base_branch',
+			'main',
+			'GIT_DEFAULT_BASE_BRANCH'
+		);
 
 		// Get default CLI from config
-		const defaultCli = await configService.get('agent.default_cli', 'claude-code', 'AGENT_DEFAULT_CLI');
+		const defaultCli = await configService.get(
+			'agent.default_cli',
+			'claude-code',
+			'AGENT_DEFAULT_CLI'
+		);
 		const codingCli = (defaultCli as 'claude-code' | 'gemini' | 'codex') || 'claude-code';
 
 		try {
@@ -636,12 +715,12 @@ class LinearAgentMonitor {
 			await this.addCommentToIssue(
 				issue.id,
 				`🚀 **Vibe Coding task started**\n\n` +
-				`Repository: \`${repoName}\`\n` +
-				`Branch: \`${baseBranch}\`\n` +
-				`Agent: \`${codingCli}\`\n\n` +
-				`[View Live Progress →](${env.APP_URL}/tasks/${taskId})\n\n` +
-				`Connection commands will be posted once the VM is provisioned...\n\n` +
-				`---\n🤖 *Claude Code*`
+					`Repository: \`${repoName}\`\n` +
+					`Branch: \`${baseBranch}\`\n` +
+					`Agent: \`${codingCli}\`\n\n` +
+					`[View Live Progress →](${env.APP_URL}/tasks/${taskId})\n\n` +
+					`Connection commands will be posted once the VM is provisioned...\n\n` +
+					`---\n🤖 *Claude Code*`
 			);
 
 			console.log(`[LinearAgentMonitor] Vibe task ${taskId} started for ${issue.identifier}`);
@@ -654,7 +733,7 @@ class LinearAgentMonitor {
 			await this.addCommentToIssue(
 				issue.id,
 				`❌ **Vibe Coding task failed to start**: ${error instanceof Error ? error.message : String(error)}\n\n` +
-				`---\n🤖 *Claude Code*`
+					`---\n🤖 *Claude Code*`
 			);
 			await this.removeLabelFromIssueById(issue.id, workingLabelId);
 			await this.addLabelToIssue(issue.id, 'Agent/blocked');
@@ -662,7 +741,10 @@ class LinearAgentMonitor {
 		}
 	}
 
-	private async executeFixImplementationTask(issue: LinearIssue, agentLabelId: string): Promise<boolean> {
+	private async executeFixImplementationTask(
+		issue: LinearIssue,
+		agentLabelId: string
+	): Promise<boolean> {
 		console.log(`[LinearAgentMonitor] Executing fix implementation task for ${issue.identifier}`);
 
 		// FIRST: Immediately swap label from Agent/fix Implementation to Agent/working
@@ -673,8 +755,8 @@ class LinearAgentMonitor {
 			await this.addCommentToIssue(
 				issue.id,
 				'❌ **Agent task failed**: Required label "Agent/working" not found in Linear.\n\n' +
-				'Please create a "working" label under the "Agent" parent group.\n\n' +
-				'---\n🤖 *Claude Code*'
+					'Please create a "working" label under the "Agent" parent group.\n\n' +
+					'---\n🤖 *Claude Code*'
 			);
 			return false; // Failed, allow retry
 		}
@@ -682,19 +764,21 @@ class LinearAgentMonitor {
 		// Swap labels immediately to prevent duplicate pickup
 		await this.removeLabelFromIssue(issue.id, agentLabelId);
 		await this.addLabelToIssueById(issue.id, workingLabelId);
-		console.log(`[LinearAgentMonitor] Swapped Agent/fix Implementation -> Agent/working for ${issue.identifier}`);
+		console.log(
+			`[LinearAgentMonitor] Swapped Agent/fix Implementation -> Agent/working for ${issue.identifier}`
+		);
 
 		// Find the existing active task for this Linear issue
 		const activeTasks = await getActiveTasksWithLinearMetadata();
-		const existingTask = activeTasks.find(task => task.metadata?.linear?.issue_id === issue.id);
+		const existingTask = activeTasks.find((task) => task.metadata?.linear?.issue_id === issue.id);
 
 		if (!existingTask) {
 			console.error(`[LinearAgentMonitor] No active task found for ${issue.identifier}`);
 			await this.addCommentToIssue(
 				issue.id,
 				'❌ **Agent task failed**: No active Vibe Coding task found for this Linear issue.\n\n' +
-				'Please start a new implementation task first using the "Agent: implement" label.\n\n' +
-				'---\n🤖 *Claude Code*'
+					'Please start a new implementation task first using the "Agent: implement" label.\n\n' +
+					'---\n🤖 *Claude Code*'
 			);
 			await this.removeLabelFromIssueById(issue.id, workingLabelId);
 			await this.addLabelToIssue(issue.id, 'Agent/blocked');
@@ -705,12 +789,14 @@ class LinearAgentMonitor {
 		let conn = getActiveConnection(existingTask.id);
 		if (!conn) {
 			// Try to reconnect to the VM
-			console.log(`[LinearAgentMonitor] No active connection for task ${existingTask.id}, attempting reconnect...`);
+			console.log(
+				`[LinearAgentMonitor] No active connection for task ${existingTask.id}, attempting reconnect...`
+			);
 			await this.addCommentToIssue(
 				issue.id,
 				'🔄 **Reconnecting to VM**\n\n' +
-				'No active connection found (server may have restarted). Attempting to reconnect...\n\n' +
-				'---\n🤖 *Claude Code*'
+					'No active connection found (server may have restarted). Attempting to reconnect...\n\n' +
+					'---\n🤖 *Claude Code*'
 			);
 
 			const reconnected = await manualReconnect(existingTask.id);
@@ -723,8 +809,8 @@ class LinearAgentMonitor {
 				await this.addCommentToIssue(
 					issue.id,
 					'❌ **Agent task failed**: Could not reconnect to VM.\n\n' +
-					'The VM may have been stopped. Please start a new implementation task.\n\n' +
-					'---\n🤖 *Claude Code*'
+						'The VM may have been stopped. Please start a new implementation task.\n\n' +
+						'---\n🤖 *Claude Code*'
 				);
 				await this.removeLabelFromIssueById(issue.id, workingLabelId);
 				await this.addLabelToIssue(issue.id, 'Agent/blocked');
@@ -735,8 +821,8 @@ class LinearAgentMonitor {
 			await this.addCommentToIssue(
 				issue.id,
 				'✅ **Reconnected to VM**\n\n' +
-				'Successfully reconnected. Sending fix instruction...\n\n' +
-				'---\n🤖 *Claude Code*'
+					'Successfully reconnected. Sending fix instruction...\n\n' +
+					'---\n🤖 *Claude Code*'
 			);
 		}
 
@@ -748,7 +834,7 @@ class LinearAgentMonitor {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						Authorization: await this.getApiKey()
+						Authorization: await this.getApiKey(),
 					},
 					body: JSON.stringify({
 						query: `
@@ -767,8 +853,8 @@ class LinearAgentMonitor {
 								}
 							}
 						`,
-						variables: { id: issue.id }
-					})
+						variables: { id: issue.id },
+					}),
 				});
 
 				const data = await response.json();
@@ -776,7 +862,10 @@ class LinearAgentMonitor {
 					issueWithComments = { ...issue, comments: data.data.issue.comments };
 				}
 			} catch (err) {
-				console.error(`[LinearAgentMonitor] Failed to fetch comments for ${issue.identifier}:`, err);
+				console.error(
+					`[LinearAgentMonitor] Failed to fetch comments for ${issue.identifier}:`,
+					err
+				);
 			}
 
 			// Build instruction text from description and last comment only
@@ -788,7 +877,8 @@ class LinearAgentMonitor {
 
 			// Include only the last comment (most recent feedback)
 			if (issueWithComments.comments?.nodes?.length > 0) {
-				const lastComment = issueWithComments.comments.nodes[issueWithComments.comments.nodes.length - 1];
+				const lastComment =
+					issueWithComments.comments.nodes[issueWithComments.comments.nodes.length - 1];
 				const author = lastComment.user?.name || 'Unknown';
 				instructionText += `Latest feedback from ${author}:\n\n${lastComment.body}\n\n`;
 			}
@@ -797,33 +887,42 @@ class LinearAgentMonitor {
 			instructionText += "Don't forget to update the merge request when done.";
 
 			// Send Ctrl+C first to clear input buffer
-			console.log(`[LinearAgentMonitor] Sending Ctrl+C to clear input buffer for task ${existingTask.id}`);
+			console.log(
+				`[LinearAgentMonitor] Sending Ctrl+C to clear input buffer for task ${existingTask.id}`
+			);
 			conn.write('\x03'); // ASCII code 3 = Ctrl+C
-			await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+			await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait 1 second
 
 			// Send the instruction text
-			console.log(`[LinearAgentMonitor] Sending fix implementation instruction to task ${existingTask.id}`);
+			console.log(
+				`[LinearAgentMonitor] Sending fix implementation instruction to task ${existingTask.id}`
+			);
 			await sendInstruction(existingTask.id, instructionText);
 
 			// Add comment to Linear
 			await this.addCommentToIssue(
 				issue.id,
 				`🔧 **Fix implementation instruction sent**\n\n` +
-				`The agent has been instructed to fix the implementation based on your feedback.\n\n` +
-				`[View Task Terminal →](${env.APP_URL}/tasks/${existingTask.id})\n\n` +
-				`---\n🤖 *Claude Code*`
+					`The agent has been instructed to fix the implementation based on your feedback.\n\n` +
+					`[View Task Terminal →](${env.APP_URL}/tasks/${existingTask.id})\n\n` +
+					`---\n🤖 *Claude Code*`
 			);
 
-			console.log(`[LinearAgentMonitor] Fix implementation instruction sent for ${issue.identifier}`);
+			console.log(
+				`[LinearAgentMonitor] Fix implementation instruction sent for ${issue.identifier}`
+			);
 
 			// Note: Keep Agent/working label - it will be updated by the vibe task workflow when done
 			return true; // Successfully sent instruction
 		} catch (error) {
-			console.error(`[LinearAgentMonitor] Fix implementation task failed for ${issue.identifier}:`, error);
+			console.error(
+				`[LinearAgentMonitor] Fix implementation task failed for ${issue.identifier}:`,
+				error
+			);
 			await this.addCommentToIssue(
 				issue.id,
 				`❌ **Failed to send fix instruction**: ${error instanceof Error ? error.message : String(error)}\n\n` +
-				`---\n🤖 *Claude Code*`
+					`---\n🤖 *Claude Code*`
 			);
 			await this.removeLabelFromIssueById(issue.id, workingLabelId);
 			await this.addLabelToIssue(issue.id, 'Agent/blocked');
@@ -842,8 +941,8 @@ class LinearAgentMonitor {
 			await this.addCommentToIssue(
 				issue.id,
 				'❌ **Agent task failed**: Required label "Agent/working" not found in Linear.\n\n' +
-				'Please create a "working" label under the "Agent" parent group.\n\n' +
-				'---\n🤖 *Claude Code*'
+					'Please create a "working" label under the "Agent" parent group.\n\n' +
+					'---\n🤖 *Claude Code*'
 			);
 			return false;
 		}
@@ -851,19 +950,21 @@ class LinearAgentMonitor {
 		// Swap labels immediately to prevent duplicate pickup
 		await this.removeLabelFromIssue(issue.id, agentLabelId);
 		await this.addLabelToIssueById(issue.id, workingLabelId);
-		console.log(`[LinearAgentMonitor] Swapped Agent/Code Review -> Agent/working for ${issue.identifier}`);
+		console.log(
+			`[LinearAgentMonitor] Swapped Agent/Code Review -> Agent/working for ${issue.identifier}`
+		);
 
 		// Find the existing active task for this Linear issue
 		const activeTasks = await getActiveTasksWithLinearMetadata();
-		const existingTask = activeTasks.find(task => task.metadata?.linear?.issue_id === issue.id);
+		const existingTask = activeTasks.find((task) => task.metadata?.linear?.issue_id === issue.id);
 
 		if (!existingTask) {
 			console.error(`[LinearAgentMonitor] No active task found for ${issue.identifier}`);
 			await this.addCommentToIssue(
 				issue.id,
 				'❌ **Agent task failed**: No active Vibe Coding task found for this Linear issue.\n\n' +
-				'Please start a new implementation task first using the "Agent: implement" label.\n\n' +
-				'---\n🤖 *Claude Code*'
+					'Please start a new implementation task first using the "Agent: implement" label.\n\n' +
+					'---\n🤖 *Claude Code*'
 			);
 			await this.removeLabelFromIssueById(issue.id, workingLabelId);
 			await this.addLabelToIssue(issue.id, 'Agent/blocked');
@@ -876,8 +977,8 @@ class LinearAgentMonitor {
 			await this.addCommentToIssue(
 				issue.id,
 				'❌ **Agent task failed**: No GitLab merge request found for this task.\n\n' +
-				'Please ensure the agent created a merge request, or manually add the MR URL.\n\n' +
-				'---\n🤖 *Claude Code*'
+					'Please ensure the agent created a merge request, or manually add the MR URL.\n\n' +
+					'---\n🤖 *Claude Code*'
 			);
 			await this.removeLabelFromIssueById(issue.id, workingLabelId);
 			await this.addLabelToIssue(issue.id, 'Agent/blocked');
@@ -887,12 +988,14 @@ class LinearAgentMonitor {
 		// Check if there's an active connection for this task
 		let conn = getActiveConnection(existingTask.id);
 		if (!conn) {
-			console.log(`[LinearAgentMonitor] No active connection for task ${existingTask.id}, attempting reconnect...`);
+			console.log(
+				`[LinearAgentMonitor] No active connection for task ${existingTask.id}, attempting reconnect...`
+			);
 			await this.addCommentToIssue(
 				issue.id,
 				'🔄 **Reconnecting to VM**\n\n' +
-				'No active connection found. Attempting to reconnect...\n\n' +
-				'---\n🤖 *Claude Code*'
+					'No active connection found. Attempting to reconnect...\n\n' +
+					'---\n🤖 *Claude Code*'
 			);
 
 			const reconnected = await manualReconnect(existingTask.id);
@@ -905,8 +1008,8 @@ class LinearAgentMonitor {
 				await this.addCommentToIssue(
 					issue.id,
 					'❌ **Agent task failed**: Could not reconnect to VM.\n\n' +
-					'The VM may have been stopped. Please start a new implementation task.\n\n' +
-					'---\n🤖 *Claude Code*'
+						'The VM may have been stopped. Please start a new implementation task.\n\n' +
+						'---\n🤖 *Claude Code*'
 				);
 				await this.removeLabelFromIssueById(issue.id, workingLabelId);
 				await this.addLabelToIssue(issue.id, 'Agent/blocked');
@@ -917,8 +1020,8 @@ class LinearAgentMonitor {
 			await this.addCommentToIssue(
 				issue.id,
 				'✅ **Reconnected to VM**\n\n' +
-				'Successfully reconnected. Fetching code review feedback from GitLab...\n\n' +
-				'---\n🤖 *Claude Code*'
+					'Successfully reconnected. Fetching code review feedback from GitLab...\n\n' +
+					'---\n🤖 *Claude Code*'
 			);
 		}
 
@@ -932,27 +1035,31 @@ class LinearAgentMonitor {
 			);
 
 			// Send Ctrl+C first to clear input buffer
-			console.log(`[LinearAgentMonitor] Sending Ctrl+C to clear input buffer for task ${existingTask.id}`);
+			console.log(
+				`[LinearAgentMonitor] Sending Ctrl+C to clear input buffer for task ${existingTask.id}`
+			);
 			conn.write('\x03');
-			await new Promise(resolve => setTimeout(resolve, 1000));
+			await new Promise((resolve) => setTimeout(resolve, 1000));
 
 			// Send the comprehensive instruction
-			console.log(`[LinearAgentMonitor] Sending code review instruction to task ${existingTask.id}`);
+			console.log(
+				`[LinearAgentMonitor] Sending code review instruction to task ${existingTask.id}`
+			);
 			await sendInstruction(existingTask.id, instructionText);
 
 			// Add comment to Linear with summary
 			await this.addCommentToIssue(
 				issue.id,
 				`📋 **Code Review Feedback Sent**\n\n` +
-				`The agent has been provided with comprehensive feedback from the GitLab merge request:\n\n` +
-				`**Merge Request**: ${existingTask.mr_url}\n\n` +
-				`The agent will:\n` +
-				`1. Review all comments on the MR (general and inline code comments)\n` +
-				`2. Address each piece of feedback\n` +
-				`3. Update the merge request with fixes\n` +
-				`4. Comment on the MR with a summary of changes\n\n` +
-				`[View Task Terminal →](${env.APP_URL}/tasks/${existingTask.id})\n\n` +
-				`---\n🤖 *Claude Code*`
+					`The agent has been provided with comprehensive feedback from the GitLab merge request:\n\n` +
+					`**Merge Request**: ${existingTask.mr_url}\n\n` +
+					`The agent will:\n` +
+					`1. Review all comments on the MR (general and inline code comments)\n` +
+					`2. Address each piece of feedback\n` +
+					`3. Update the merge request with fixes\n` +
+					`4. Comment on the MR with a summary of changes\n\n` +
+					`[View Task Terminal →](${env.APP_URL}/tasks/${existingTask.id})\n\n` +
+					`---\n🤖 *Claude Code*`
 			);
 
 			console.log(`[LinearAgentMonitor] Code review instruction sent for ${issue.identifier}`);
@@ -963,11 +1070,11 @@ class LinearAgentMonitor {
 			await this.addCommentToIssue(
 				issue.id,
 				`❌ **Failed to fetch code review feedback**: ${error instanceof Error ? error.message : String(error)}\n\n` +
-				`Please ensure:\n` +
-				`- GitLab token is configured (GITLAB_TOKEN in .env)\n` +
-				`- The merge request URL is valid\n` +
-				`- You have access to the repository\n\n` +
-				`---\n🤖 *Claude Code*`
+					`Please ensure:\n` +
+					`- GitLab token is configured (GITLAB_TOKEN in .env)\n` +
+					`- The merge request URL is valid\n` +
+					`- You have access to the repository\n\n` +
+					`---\n🤖 *Claude Code*`
 			);
 			await this.removeLabelFromIssueById(issue.id, workingLabelId);
 			await this.addLabelToIssue(issue.id, 'Agent/blocked');
@@ -975,127 +1082,12 @@ class LinearAgentMonitor {
 		}
 	}
 
-	private async spawnClaudeAsync(prompt: string, cwd: string, outputFile: string) {
-		// Resolve API key from Secret Manager before spawning
-		let anthropicApiKey: string;
-		try {
-			anthropicApiKey = await getAnthropicApiKey();
-		} catch {
-			anthropicApiKey = '';
-		}
-
-		// Spawn claude with stdin pipe to pass prompt (avoids shell escaping issues)
-		const claudePath = env.CLAUDE_PATH || 'claude';
-		const child = spawn(claudePath, ['-p'], {
-			cwd,
-			shell: false,
-			detached: true,
-			stdio: ['pipe', 'pipe', 'pipe'],
-			env: {
-				...process.env,
-				ANTHROPIC_API_KEY: anthropicApiKey
-			}
-		});
-
-		// Write prompt to stdin and close
-		child.stdin?.write(prompt);
-		child.stdin?.end();
-
-		// Collect stdout to file when complete
-		let stdout = '';
-		let stderr = '';
-		child.stdout?.on('data', (data) => {
-			stdout += data.toString();
-		});
-		child.stderr?.on('data', (data) => {
-			stderr += data.toString();
-		});
-
-		child.on('close', (code) => {
-			if (code === 0 && stdout) {
-				writeFileSync(outputFile, stdout);
-				console.log(`[LinearAgentMonitor] Claude finished, wrote output to ${outputFile}`);
-			} else {
-				console.error(`[LinearAgentMonitor] Claude exited with code ${code}`);
-				if (stderr) {
-					console.error(`[LinearAgentMonitor] stderr: ${stderr}`);
-				}
-				// Write error marker with stderr for debugging
-				writeFileSync(outputFile, `ERROR: Claude exited with code ${code}\n${stderr}`);
-			}
-		});
-
-		child.on('error', (error) => {
-			console.error(`[LinearAgentMonitor] Claude spawn error:`, error);
-			writeFileSync(outputFile, `ERROR: ${error.message}`);
-		});
-
-		// Unref so parent can exit independently
-		child.unref();
-	}
-
-	private async runCommand(
-		command: string,
-		args: string[],
-		cwd: string,
-		timeoutMs: number = 30000
-	): Promise<string> {
-		// Resolve API key from Secret Manager before running command
-		let anthropicApiKey: string;
-		try {
-			anthropicApiKey = await getAnthropicApiKey();
-		} catch {
-			anthropicApiKey = '';
-		}
-
-		return new Promise((resolve, reject) => {
-			const child = spawn(command, args, {
-				cwd,
-				shell: true,
-				env: {
-					...process.env,
-					ANTHROPIC_API_KEY: anthropicApiKey
-				}
-			});
-
-			let stdout = '';
-			let stderr = '';
-
-			child.stdout?.on('data', (data) => {
-				stdout += data.toString();
-			});
-
-			child.stderr?.on('data', (data) => {
-				stderr += data.toString();
-			});
-
-			const timeout = setTimeout(() => {
-				child.kill();
-				reject(new Error(`Command timeout after ${timeoutMs}ms`));
-			}, timeoutMs);
-
-			child.on('close', (code) => {
-				clearTimeout(timeout);
-				if (code === 0) {
-					resolve(stdout);
-				} else {
-					reject(new Error(`Command failed with code ${code}: ${stderr}`));
-				}
-			});
-
-			child.on('error', (error) => {
-				clearTimeout(timeout);
-				reject(error);
-			});
-		});
-	}
-
 	private async addCommentToIssue(issueId: string, comment: string) {
 		const response = await fetch('https://api.linear.app/graphql', {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				Authorization: await this.getApiKey()
+				Authorization: await this.getApiKey(),
 			},
 			body: JSON.stringify({
 				query: `
@@ -1111,10 +1103,10 @@ class LinearAgentMonitor {
 				variables: {
 					input: {
 						issueId,
-						body: comment
-					}
-				}
-			})
+						body: comment,
+					},
+				},
+			}),
 		});
 
 		if (!response.ok) {
@@ -1133,7 +1125,7 @@ class LinearAgentMonitor {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				Authorization: await this.getApiKey()
+				Authorization: await this.getApiKey(),
 			},
 			body: JSON.stringify({
 				query: `
@@ -1148,13 +1140,14 @@ class LinearAgentMonitor {
 					}
 				`,
 				variables: {
-					id: issueId
-				}
-			})
+					id: issueId,
+				},
+			}),
 		});
 
 		const issueData = await issueResponse.json();
-		const currentLabelIds = issueData.data?.issue?.labels?.nodes?.map((l: { id: string }) => l.id) || [];
+		const currentLabelIds =
+			issueData.data?.issue?.labels?.nodes?.map((l: { id: string }) => l.id) || [];
 
 		// Filter out the label to remove
 		const newLabelIds = currentLabelIds.filter((id: string) => id !== labelId);
@@ -1164,7 +1157,7 @@ class LinearAgentMonitor {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				Authorization: await this.getApiKey()
+				Authorization: await this.getApiKey(),
 			},
 			body: JSON.stringify({
 				query: `
@@ -1177,10 +1170,10 @@ class LinearAgentMonitor {
 				variables: {
 					id: issueId,
 					input: {
-						labelIds: newLabelIds
-					}
-				}
-			})
+						labelIds: newLabelIds,
+					},
+				},
+			}),
 		});
 
 		if (!response.ok) {
@@ -1193,7 +1186,9 @@ class LinearAgentMonitor {
 		const labelId = await this.findLabel(labelName);
 
 		if (!labelId) {
-			console.error(`[LinearAgentMonitor] Cannot add label "${labelName}" - label not found in Linear`);
+			console.error(
+				`[LinearAgentMonitor] Cannot add label "${labelName}" - label not found in Linear`
+			);
 			return;
 		}
 
@@ -1202,7 +1197,7 @@ class LinearAgentMonitor {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				Authorization: await this.getApiKey()
+				Authorization: await this.getApiKey(),
 			},
 			body: JSON.stringify({
 				query: `
@@ -1217,13 +1212,14 @@ class LinearAgentMonitor {
 					}
 				`,
 				variables: {
-					id: issueId
-				}
-			})
+					id: issueId,
+				},
+			}),
 		});
 
 		const issueData = await issueResponse.json();
-		const currentLabelIds = issueData.data?.issue?.labels?.nodes?.map((l: { id: string }) => l.id) || [];
+		const currentLabelIds =
+			issueData.data?.issue?.labels?.nodes?.map((l: { id: string }) => l.id) || [];
 
 		// Add new label if not already present
 		if (!currentLabelIds.includes(labelId)) {
@@ -1235,7 +1231,7 @@ class LinearAgentMonitor {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				Authorization: await this.getApiKey()
+				Authorization: await this.getApiKey(),
 			},
 			body: JSON.stringify({
 				query: `
@@ -1248,10 +1244,10 @@ class LinearAgentMonitor {
 				variables: {
 					id: issueId,
 					input: {
-						labelIds: currentLabelIds
-					}
-				}
-			})
+						labelIds: currentLabelIds,
+					},
+				},
+			}),
 		});
 
 		if (!response.ok) {
@@ -1265,7 +1261,7 @@ class LinearAgentMonitor {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				Authorization: await this.getApiKey()
+				Authorization: await this.getApiKey(),
 			},
 			body: JSON.stringify({
 				query: `
@@ -1279,12 +1275,13 @@ class LinearAgentMonitor {
 						}
 					}
 				`,
-				variables: { id: issueId }
-			})
+				variables: { id: issueId },
+			}),
 		});
 
 		const issueData = await issueResponse.json();
-		const currentLabelIds = issueData.data?.issue?.labels?.nodes?.map((l: { id: string }) => l.id) || [];
+		const currentLabelIds =
+			issueData.data?.issue?.labels?.nodes?.map((l: { id: string }) => l.id) || [];
 
 		// Add new label if not already present
 		if (!currentLabelIds.includes(labelId)) {
@@ -1296,7 +1293,7 @@ class LinearAgentMonitor {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				Authorization: await this.getApiKey()
+				Authorization: await this.getApiKey(),
 			},
 			body: JSON.stringify({
 				query: `
@@ -1308,9 +1305,9 @@ class LinearAgentMonitor {
 				`,
 				variables: {
 					id: issueId,
-					input: { labelIds: currentLabelIds }
-				}
-			})
+					input: { labelIds: currentLabelIds },
+				},
+			}),
 		});
 
 		if (!response.ok) {
@@ -1324,7 +1321,7 @@ class LinearAgentMonitor {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				Authorization: await this.getApiKey()
+				Authorization: await this.getApiKey(),
 			},
 			body: JSON.stringify({
 				query: `
@@ -1338,12 +1335,13 @@ class LinearAgentMonitor {
 						}
 					}
 				`,
-				variables: { id: issueId }
-			})
+				variables: { id: issueId },
+			}),
 		});
 
 		const issueData = await issueResponse.json();
-		const currentLabelIds = issueData.data?.issue?.labels?.nodes?.map((l: { id: string }) => l.id) || [];
+		const currentLabelIds =
+			issueData.data?.issue?.labels?.nodes?.map((l: { id: string }) => l.id) || [];
 
 		// Filter out the label to remove
 		const newLabelIds = currentLabelIds.filter((id: string) => id !== labelId);
@@ -1353,7 +1351,7 @@ class LinearAgentMonitor {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				Authorization: await this.getApiKey()
+				Authorization: await this.getApiKey(),
 			},
 			body: JSON.stringify({
 				query: `
@@ -1365,9 +1363,9 @@ class LinearAgentMonitor {
 				`,
 				variables: {
 					id: issueId,
-					input: { labelIds: newLabelIds }
-				}
-			})
+					input: { labelIds: newLabelIds },
+				},
+			}),
 		});
 
 		if (!response.ok) {
@@ -1400,7 +1398,7 @@ class LinearAgentMonitor {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
-					Authorization: await this.getApiKey()
+					Authorization: await this.getApiKey(),
 				},
 				body: JSON.stringify({
 					query: `
@@ -1419,8 +1417,8 @@ class LinearAgentMonitor {
 							}
 						}
 					`,
-					variables: { id: issue.id }
-				})
+					variables: { id: issue.id },
+				}),
 			});
 
 			const data = await response.json();
@@ -1448,7 +1446,11 @@ class LinearAgentMonitor {
 		}
 
 		// Get default system prompt from config
-		const defaultSystemPrompt = await configService.get('agent.default_system_prompt', '', 'AGENT_DEFAULT_SYSTEM_PROMPT');
+		const defaultSystemPrompt = await configService.get(
+			'agent.default_system_prompt',
+			'',
+			'AGENT_DEFAULT_SYSTEM_PROMPT'
+		);
 
 		const taskInput: TaskCreateInput = {
 			repository: repoUrl,
@@ -1457,14 +1459,14 @@ class LinearAgentMonitor {
 			coding_cli: codingCli,
 			system_prompt: `This task was automatically triggered from Linear ticket ${issue.identifier}. Focus on implementing the requirements exactly as specified.
 
-${defaultSystemPrompt}`
+${defaultSystemPrompt}`,
 		};
 
 		const linearMetadata = {
 			issue_id: issue.id,
 			issue_identifier: issue.identifier,
 			issue_url: issue.url,
-			issue_title: issue.title
+			issue_title: issue.title,
 		};
 
 		// Create the task in database with Linear metadata
@@ -1486,7 +1488,7 @@ ${defaultSystemPrompt}`
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
-					Authorization: await this.getApiKey()
+					Authorization: await this.getApiKey(),
 				},
 				body: JSON.stringify({
 					query: `
@@ -1503,8 +1505,8 @@ ${defaultSystemPrompt}`
 							}
 						}
 					`,
-					variables: { id: issueId }
-				})
+					variables: { id: issueId },
+				}),
 			});
 
 			const data = await response.json();
@@ -1516,7 +1518,10 @@ ${defaultSystemPrompt}`
 					label.name === 'working' && label.parent?.name === 'Agent'
 			);
 		} catch (error) {
-			console.error(`[LinearAgentMonitor] Error checking Agent/working label for ${issueId}:`, error);
+			console.error(
+				`[LinearAgentMonitor] Error checking Agent/working label for ${issueId}:`,
+				error
+			);
 			// On error, assume it has the label to avoid blocking legitimate checks
 			return true;
 		}
@@ -1528,14 +1533,16 @@ ${defaultSystemPrompt}`
 		const groupName = parts.length > 1 ? parts[0] : null;
 		const labelName = parts.length > 1 ? parts[1] : parts[0];
 
-		console.log(`[LinearAgentMonitor] Finding label: ${labelSpec} (group: ${groupName}, name: ${labelName})`);
+		console.log(
+			`[LinearAgentMonitor] Finding label: ${labelSpec} (group: ${groupName}, name: ${labelName})`
+		);
 
 		// Find existing label (with optional parent group filter)
 		const findResponse = await fetch('https://api.linear.app/graphql', {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				Authorization: await this.getApiKey()
+				Authorization: await this.getApiKey(),
 			},
 			body: JSON.stringify({
 				query: `
@@ -1552,14 +1559,22 @@ ${defaultSystemPrompt}`
 						}
 					}
 				`,
-				variables: { name: labelName }
-			})
+				variables: { name: labelName },
+			}),
 		});
 
 		const findData = await findResponse.json();
 		const labels = findData.data?.issueLabels?.nodes || [];
 
-		console.log(`[LinearAgentMonitor] Found ${labels.length} labels matching "${labelName}":`, JSON.stringify(labels.map((l: { name: string; parent?: { name: string } }) => ({ name: l.name, parent: l.parent?.name }))));
+		console.log(
+			`[LinearAgentMonitor] Found ${labels.length} labels matching "${labelName}":`,
+			JSON.stringify(
+				labels.map((l: { name: string; parent?: { name: string } }) => ({
+					name: l.name,
+					parent: l.parent?.name,
+				}))
+			)
+		);
 
 		// Find label matching the group if specified
 		const existingLabel = groupName

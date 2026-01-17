@@ -28,13 +28,13 @@ export async function verifyToken(token: string): Promise<TokenPayload | null> {
 	try {
 		const { payload } = await jwtVerify(token, getJWKS(), {
 			issuer: `https://${env.AUTH0_DOMAIN}/`,
-			audience: env.AUTH0_AUDIENCE || 'https://app.reindeer.ai'
+			audience: env.AUTH0_AUDIENCE || 'https://app.reindeer.ai',
 		});
 
 		return {
 			sub: payload.sub as string,
 			email: payload.email as string | undefined,
-			permissions: (payload.permissions as string[]) || []
+			permissions: (payload.permissions as string[]) || [],
 		};
 	} catch (error) {
 		console.error('Token verification failed:', error);

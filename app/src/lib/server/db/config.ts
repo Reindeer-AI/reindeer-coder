@@ -1,6 +1,6 @@
 import type { DbAdapter } from './adapter';
-import { SqliteAdapter } from './sqlite-adapter';
 import { PostgresAdapter } from './postgres-adapter';
+import { SqliteAdapter } from './sqlite-adapter';
 
 export type DatabaseType = 'sqlite' | 'postgres';
 
@@ -39,7 +39,7 @@ export async function createAdapter(config: DatabaseConfig): Promise<DbAdapter> 
 			port: config.port || 5432,
 			database: config.database || 'vibe_coding',
 			user: config.user,
-			password: config.password
+			password: config.password,
 		});
 	}
 
@@ -55,7 +55,7 @@ export function getDatabaseConfigFromEnv(): DatabaseConfig {
 	if (dbType === 'sqlite') {
 		return {
 			type: 'sqlite',
-			filename: process.env.DB_FILENAME || 'vibe-coding.db'
+			filename: process.env.DB_FILENAME || 'vibe-coding.db',
 		};
 	}
 
@@ -66,17 +66,17 @@ export function getDatabaseConfigFromEnv(): DatabaseConfig {
 		if (connectionString) {
 			return {
 				type: 'postgres',
-				connectionString
+				connectionString,
 			};
 		}
 
 		return {
 			type: 'postgres',
 			host: process.env.DB_HOST || 'localhost',
-			port: parseInt(process.env.DB_PORT || '5432'),
+			port: parseInt(process.env.DB_PORT || '5432', 10),
 			database: process.env.DB_NAME || 'vibe_coding',
 			user: process.env.DB_USER || 'postgres',
-			password: process.env.DB_PASSWORD
+			password: process.env.DB_PASSWORD,
 		};
 	}
 

@@ -1,19 +1,19 @@
+import { writeFileSync } from 'node:fs';
 import { v4 as uuidv4 } from 'uuid';
-import type { Task, TaskCreateInput, TaskStatus, TaskMetadata } from './schema';
 import {
-	ensureTerminalFilesDir,
-	initTerminalFile,
 	appendToTerminalFile,
-	readTerminalFile,
+	ensureTerminalFilesDir,
 	getTerminalFilePath,
-	needsAttention
+	initTerminalFile,
+	needsAttention,
+	readTerminalFile,
 } from '../terminal-storage';
-import { writeFileSync } from 'fs';
-import { getDatabaseConfigFromEnv, createAdapter } from './config';
+import type { DbRow, SqlValue } from './adapter';
+import { createAdapter, getDatabaseConfigFromEnv } from './config';
+import type { PostgresAdapter } from './postgres-adapter';
+import type { Task, TaskCreateInput, TaskMetadata, TaskStatus } from './schema';
 import { SqlBuilder } from './sql-builder';
-import type { DbAdapter } from './adapter';
-import { SqliteAdapter } from './sqlite-adapter';
-import { PostgresAdapter } from './postgres-adapter';
+import type { SqliteAdapter } from './sqlite-adapter';
 
 // Initialize database from environment configuration
 const dbConfig = getDatabaseConfigFromEnv();
@@ -68,7 +68,7 @@ async function runMigrations() {
 		{ name: 'mr_iid', type: 'INTEGER' },
 		{ name: 'mr_url', type: 'TEXT' },
 		{ name: 'project_id', type: 'TEXT' },
-		{ name: 'mr_last_review_sha', type: 'TEXT' }
+		{ name: 'mr_last_review_sha', type: 'TEXT' },
 	];
 	for (const col of mrColumns) {
 		await addColumnIfNotExists('tasks', col.name, col.type);
@@ -80,7 +80,6 @@ async function runMigrations() {
 
 	console.log('[db] Migrations completed');
 }
-
 
 /**
  * Add column to table if it doesn't exist
@@ -97,9 +96,10 @@ async function addColumnIfNotExists(tableName: string, columnName: string, colum
 			}
 			console.log(`[db] Added ${columnName} column to ${tableName} table`);
 		}
-	} catch (error: any) {
+	} catch (error) {
 		// For SQLite, check if it's a duplicate column error
-		if (dbConfig.type === 'sqlite' && error.message?.includes('duplicate column name')) {
+		const errMsg = error instanceof Error ? error.message : '';
+		if (dbConfig.type === 'sqlite' && errMsg.includes('duplicate column name')) {
 			// Column already exists, ignore
 		} else {
 			console.error(`[db] Error adding ${columnName} column:`, error);
@@ -143,8 +143,8 @@ export async function createTask(
 				issue_url: linearMetadata.issue_url,
 				issue_title: linearMetadata.issue_title,
 				connection_commands_posted: false,
-				attention_check_posted: false
-			}
+				attention_check_posted: false,
+			},
 		};
 	}
 
@@ -167,7 +167,7 @@ export async function createTask(
 		input.coding_cli,
 		input.system_prompt || null,
 		terminalFilePath,
-		metadata ? JSON.stringify(metadata) : null
+		metadata ? JSON.stringify(metadata) : null,
 	];
 
 	if (isAsync) {
@@ -176,14 +176,18 @@ export async function createTask(
 		adapter.run(sql, params);
 	}
 
-	return (await getTaskById(id))!;
+	const task = await getTaskById(id);
+	if (!task) {
+		throw new Error(`Failed to retrieve created task ${id}`);
+	}
+	return task;
 }
 
 /**
  * Parse metadata JSON from DB result
  */
-function parseTaskMetadata(row: any): Task {
-	if (row && row.metadata) {
+function parseTaskMetadata(row: DbRow): Task {
+	if (row?.metadata) {
 		if (typeof row.metadata === 'string') {
 			try {
 				row.metadata = JSON.parse(row.metadata);
@@ -192,13 +196,13 @@ function parseTaskMetadata(row: any): Task {
 			}
 		}
 	}
-	return row as Task;
+	return row as unknown as Task;
 }
 
 /**
  * Parse metadata for multiple tasks
  */
-function parseTasksMetadata(rows: any[]): Task[] {
+function parseTasksMetadata(rows: DbRow[]): Task[] {
 	return rows.map(parseTaskMetadata);
 }
 
@@ -207,18 +211,18 @@ function parseTasksMetadata(rows: any[]): Task[] {
  */
 export async function getTaskById(id: string): Promise<Task | undefined> {
 	const sql = 'SELECT * FROM tasks WHERE id = ?';
-	let task: any;
+	let row: DbRow | undefined;
 
 	if (isAsync) {
-		task = await (adapter as PostgresAdapter).get(sql, [id]);
+		row = await (adapter as PostgresAdapter).get(sql, [id]);
 	} else {
-		task = adapter.get(sql, [id]);
+		row = (adapter as SqliteAdapter).get(sql, [id]) as DbRow | undefined;
 	}
 
-	if (!task) return undefined;
+	if (!row) return undefined;
 
 	// Parse metadata JSON
-	task = parseTaskMetadata(task);
+	const task = parseTaskMetadata(row);
 
 	// If task has terminal_file_path, load content from file
 	if (task.terminal_file_path) {
@@ -244,11 +248,11 @@ const TASK_LIST_COLUMNS =
 export async function getTasksByUserId(userId: string): Promise<Task[]> {
 	const sql = `SELECT ${TASK_LIST_COLUMNS} FROM tasks WHERE user_id = ? AND status != 'deleted' ORDER BY created_at DESC`;
 
-	let rows: any[];
+	let rows: DbRow[];
 	if (isAsync) {
 		rows = await (adapter as PostgresAdapter).all(sql, [userId]);
 	} else {
-		rows = (adapter as SqliteAdapter).all(sql, [userId]) as any[];
+		rows = (adapter as SqliteAdapter).all(sql, [userId]) as DbRow[];
 	}
 	return parseTasksMetadata(rows);
 }
@@ -259,11 +263,11 @@ export async function getTasksByUserId(userId: string): Promise<Task[]> {
 export async function getAllTasks(): Promise<Task[]> {
 	const sql = `SELECT ${TASK_LIST_COLUMNS} FROM tasks WHERE status != 'deleted' ORDER BY created_at DESC`;
 
-	let rows: any[];
+	let rows: DbRow[];
 	if (isAsync) {
 		rows = await (adapter as PostgresAdapter).all(sql, []);
 	} else {
-		rows = (adapter as SqliteAdapter).all(sql, []) as any[];
+		rows = (adapter as SqliteAdapter).all(sql, []) as DbRow[];
 	}
 	return parseTasksMetadata(rows);
 }
@@ -275,9 +279,10 @@ export async function getActiveTasksWithLinearMetadata(): Promise<Task[]> {
 	// Query for tasks with Linear metadata in JSON
 	// SQLite: metadata LIKE '%"linear":%'
 	// PostgreSQL: metadata->'linear' IS NOT NULL
-	const linearCondition = dbConfig.type === 'postgres'
-		? "metadata->'linear' IS NOT NULL"
-		: "metadata LIKE '%\"linear\":%'";
+	const linearCondition =
+		dbConfig.type === 'postgres'
+			? "metadata->'linear' IS NOT NULL"
+			: 'metadata LIKE \'%"linear":%\'';
 
 	const sql = `
 		SELECT ${TASK_LIST_COLUMNS}
@@ -287,11 +292,11 @@ export async function getActiveTasksWithLinearMetadata(): Promise<Task[]> {
 		ORDER BY created_at DESC
 	`;
 
-	let rows: any[];
+	let rows: DbRow[];
 	if (isAsync) {
 		rows = await (adapter as PostgresAdapter).all(sql, []);
 	} else {
-		rows = (adapter as SqliteAdapter).all(sql, []) as any[];
+		rows = (adapter as SqliteAdapter).all(sql, []) as DbRow[];
 	}
 	return parseTasksMetadata(rows);
 }
@@ -303,11 +308,11 @@ export async function getTasksNeedingAttention(): Promise<Task[]> {
 	// Get all running tasks
 	const sql = `SELECT ${TASK_LIST_COLUMNS} FROM tasks WHERE status = 'running'`;
 
-	let rows: any[];
+	let rows: DbRow[];
 	if (isAsync) {
 		rows = await (adapter as PostgresAdapter).all(sql, []);
 	} else {
-		rows = (adapter as SqliteAdapter).all(sql, []) as any[];
+		rows = (adapter as SqliteAdapter).all(sql, []) as DbRow[];
 	}
 
 	const runningTasks = parseTasksMetadata(rows);
@@ -470,7 +475,7 @@ export async function updateTaskMRMetadata(
 	}
 ): Promise<void> {
 	const fields: string[] = [];
-	const values: any[] = [];
+	const values: SqlValue[] = [];
 
 	if (mrMetadata.mr_iid !== undefined) {
 		fields.push('mr_iid = ?');
@@ -511,7 +516,12 @@ export interface DashboardMetrics {
 	statusBreakdown: { status: TaskStatus; count: number; percentage: number }[];
 	agentBreakdown: { coding_cli: string; count: number; percentage: number }[];
 	userStats: { totalUsers: number; mostActiveUsers: { user_email: string; task_count: number }[] };
-	successMetrics: { completionRate: number; failureRate: number; completed: number; failed: number };
+	successMetrics: {
+		completionRate: number;
+		failureRate: number;
+		completed: number;
+		failed: number;
+	};
 	recentActivity: { latestTasks: Task[]; recentFailures: Task[] };
 	timeSeriesData: { date: string; count: number }[];
 	runningVMs: { vm_name: string; task_id: string; status: TaskStatus }[];
@@ -522,7 +532,7 @@ export interface DashboardMetrics {
  */
 export async function getDashboardMetrics(userId: string): Promise<DashboardMetrics> {
 	// Helper to get single value
-	const getSingleValue = async (sql: string, params: any[]): Promise<any> => {
+	const getSingleValue = async (sql: string, params: SqlValue[]): Promise<DbRow | undefined> => {
 		if (isAsync) {
 			return await (adapter as PostgresAdapter).get(sql, params);
 		}
@@ -530,17 +540,18 @@ export async function getDashboardMetrics(userId: string): Promise<DashboardMetr
 	};
 
 	// Helper to get multiple rows
-	const getMultipleRows = async (sql: string, params: any[]): Promise<any[]> => {
+	const getMultipleRows = async (sql: string, params: SqlValue[]): Promise<DbRow[]> => {
 		if (isAsync) {
 			return await (adapter as PostgresAdapter).all(sql, params);
 		}
-		return adapter.all(sql, params);
+		return adapter.all(sql, params) as DbRow[];
 	};
 
 	// Total and active tasks
-	const totalTasksResult = (await getSingleValue('SELECT COUNT(*) as count FROM tasks WHERE user_id = ?', [
-		userId
-	])) as { count: number };
+	const totalTasksResult = (await getSingleValue(
+		'SELECT COUNT(*) as count FROM tasks WHERE user_id = ?',
+		[userId]
+	)) as { count: number };
 	const totalTasks = totalTasksResult.count;
 
 	const activeTasksResult = (await getSingleValue(
@@ -562,7 +573,7 @@ export async function getDashboardMetrics(userId: string): Promise<DashboardMetr
 
 	const statusBreakdownWithPercentage = statusBreakdown.map((s) => ({
 		...s,
-		percentage: totalTasks > 0 ? Math.round((s.count / totalTasks) * 100) : 0
+		percentage: totalTasks > 0 ? Math.round((s.count / totalTasks) * 100) : 0,
 	}));
 
 	// Agent breakdown
@@ -578,13 +589,13 @@ export async function getDashboardMetrics(userId: string): Promise<DashboardMetr
 
 	const agentBreakdownWithPercentage = agentBreakdown.map((a) => ({
 		...a,
-		percentage: totalTasks > 0 ? Math.round((a.count / totalTasks) * 100) : 0
+		percentage: totalTasks > 0 ? Math.round((a.count / totalTasks) * 100) : 0,
 	}));
 
 	// User stats (for individual user, just show their total)
 	const userStats = {
 		totalUsers: 1,
-		mostActiveUsers: [] as { user_email: string; task_count: number }[]
+		mostActiveUsers: [] as { user_email: string; task_count: number }[],
 	};
 
 	// Success metrics
@@ -609,12 +620,12 @@ export async function getDashboardMetrics(userId: string): Promise<DashboardMetr
 	const latestTasks = (await getMultipleRows(
 		`SELECT ${TASK_LIST_COLUMNS} FROM tasks WHERE user_id = ? ORDER BY created_at DESC LIMIT 5`,
 		[userId]
-	)) as Task[];
+	)) as unknown as Task[];
 
 	const recentFailures = (await getMultipleRows(
 		`SELECT ${TASK_LIST_COLUMNS} FROM tasks WHERE user_id = ? AND status = 'failed' ORDER BY updated_at DESC LIMIT 5`,
 		[userId]
-	)) as Task[];
+	)) as unknown as Task[];
 
 	// Time series (last 7 days)
 	const timeSeriesData = (await getMultipleRows(
@@ -647,7 +658,7 @@ export async function getDashboardMetrics(userId: string): Promise<DashboardMetr
 		successMetrics: { completed, failed, completionRate, failureRate },
 		recentActivity: { latestTasks, recentFailures },
 		timeSeriesData,
-		runningVMs
+		runningVMs,
 	};
 }
 
@@ -656,7 +667,7 @@ export async function getDashboardMetrics(userId: string): Promise<DashboardMetr
  */
 export async function getAllDashboardMetrics(): Promise<DashboardMetrics> {
 	// Helper to get single value
-	const getSingleValue = async (sql: string, params: any[]): Promise<any> => {
+	const getSingleValue = async (sql: string, params: SqlValue[]): Promise<DbRow | undefined> => {
 		if (isAsync) {
 			return await (adapter as PostgresAdapter).get(sql, params);
 		}
@@ -664,11 +675,11 @@ export async function getAllDashboardMetrics(): Promise<DashboardMetrics> {
 	};
 
 	// Helper to get multiple rows
-	const getMultipleRows = async (sql: string, params: any[]): Promise<any[]> => {
+	const getMultipleRows = async (sql: string, params: SqlValue[]): Promise<DbRow[]> => {
 		if (isAsync) {
 			return await (adapter as PostgresAdapter).all(sql, params);
 		}
-		return adapter.all(sql, params);
+		return adapter.all(sql, params) as DbRow[];
 	};
 
 	// Total and active tasks
@@ -695,7 +706,7 @@ export async function getAllDashboardMetrics(): Promise<DashboardMetrics> {
 
 	const statusBreakdownWithPercentage = statusBreakdown.map((s) => ({
 		...s,
-		percentage: totalTasks > 0 ? Math.round((s.count / totalTasks) * 100) : 0
+		percentage: totalTasks > 0 ? Math.round((s.count / totalTasks) * 100) : 0,
 	}));
 
 	// Agent breakdown
@@ -710,7 +721,7 @@ export async function getAllDashboardMetrics(): Promise<DashboardMetrics> {
 
 	const agentBreakdownWithPercentage = agentBreakdown.map((a) => ({
 		...a,
-		percentage: totalTasks > 0 ? Math.round((a.count / totalTasks) * 100) : 0
+		percentage: totalTasks > 0 ? Math.round((a.count / totalTasks) * 100) : 0,
 	}));
 
 	// User stats
@@ -731,7 +742,7 @@ export async function getAllDashboardMetrics(): Promise<DashboardMetrics> {
 
 	const userStats = {
 		totalUsers: totalUsersResult.count,
-		mostActiveUsers
+		mostActiveUsers,
 	};
 
 	// Success metrics
@@ -755,12 +766,12 @@ export async function getAllDashboardMetrics(): Promise<DashboardMetrics> {
 	const latestTasks = (await getMultipleRows(
 		`SELECT ${TASK_LIST_COLUMNS} FROM tasks ORDER BY created_at DESC LIMIT 10`,
 		[]
-	)) as Task[];
+	)) as unknown as Task[];
 
 	const recentFailures = (await getMultipleRows(
 		`SELECT ${TASK_LIST_COLUMNS} FROM tasks WHERE status = 'failed' ORDER BY updated_at DESC LIMIT 10`,
 		[]
-	)) as Task[];
+	)) as unknown as Task[];
 
 	// Time series (last 7 days)
 	const timeSeriesData = (await getMultipleRows(
@@ -793,14 +804,17 @@ export async function getAllDashboardMetrics(): Promise<DashboardMetrics> {
 		successMetrics: { completed, failed, completionRate, failureRate },
 		recentActivity: { latestTasks, recentFailures },
 		timeSeriesData,
-		runningVMs
+		runningVMs,
 	};
 }
 
 /**
  * Update metadata JSON field for a task
  */
-export async function updateTaskMetadata(id: string, updates: Partial<TaskMetadata>): Promise<void> {
+export async function updateTaskMetadata(
+	id: string,
+	updates: Partial<TaskMetadata>
+): Promise<void> {
 	// Get current task to merge metadata
 	const task = await getTaskById(id);
 	if (!task) return;
@@ -833,8 +847,8 @@ export async function markConnectionCommandsPosted(id: string): Promise<void> {
 	await updateTaskMetadata(id, {
 		linear: {
 			...task.metadata.linear,
-			connection_commands_posted: true
-		}
+			connection_commands_posted: true,
+		},
 	});
 }
 
@@ -848,8 +862,8 @@ export async function markAttentionCheckPosted(id: string): Promise<void> {
 	await updateTaskMetadata(id, {
 		linear: {
 			...task.metadata.linear,
-			attention_check_posted: true
-		}
+			attention_check_posted: true,
+		},
 	});
 }
 
@@ -867,16 +881,16 @@ export async function getAllConfig(): Promise<Array<import('./schema').Config>> 
 
 	if (isAsync) {
 		const rows = await (adapter as PostgresAdapter).all(sql, []);
-		return rows.map((row: any) => ({
+		return rows.map((row) => ({
 			...row,
-			is_secret: dbConfig.type === 'postgres' ? row.is_secret : row.is_secret === 1
-		}));
+			is_secret: dbConfig.type === 'postgres' ? row.is_secret : row.is_secret === 1,
+		})) as Array<import('./schema').Config>;
 	} else {
 		const rows = (adapter as SqliteAdapter).all(sql, []);
-		return rows.map((row: any) => ({
+		return rows.map((row) => ({
 			...row,
-			is_secret: row.is_secret === 1
-		}));
+			is_secret: row.is_secret === 1,
+		})) as Array<import('./schema').Config>;
 	}
 }
 
@@ -891,14 +905,14 @@ export async function getConfigByKey(key: string): Promise<import('./schema').Co
 		if (!row) return null;
 		return {
 			...row,
-			is_secret: row.is_secret
+			is_secret: row.is_secret,
 		} as import('./schema').Config;
 	} else {
 		const row = (adapter as SqliteAdapter).get(sql, [key]);
 		if (!row) return null;
 		return {
 			...row,
-			is_secret: row.is_secret === 1
+			is_secret: row.is_secret === 1,
 		} as import('./schema').Config;
 	}
 }
@@ -908,9 +922,8 @@ export async function getConfigByKey(key: string): Promise<import('./schema').Co
  */
 export async function setConfig(input: import('./schema').ConfigCreateInput): Promise<void> {
 	const now = sqlBuilder.now();
-	const isSecretValue = dbConfig.type === 'postgres'
-		? (input.is_secret ?? false)
-		: (input.is_secret ? 1 : 0);
+	const isSecretValue =
+		dbConfig.type === 'postgres' ? (input.is_secret ?? false) : input.is_secret ? 1 : 0;
 
 	// Check if key exists first
 	const existing = await getConfigByKey(input.key);
@@ -927,7 +940,7 @@ export async function setConfig(input: import('./schema').ConfigCreateInput): Pr
 			input.description ?? null,
 			isSecretValue,
 			input.category ?? null,
-			input.key
+			input.key,
 		];
 
 		if (isAsync) {
@@ -946,7 +959,7 @@ export async function setConfig(input: import('./schema').ConfigCreateInput): Pr
 			input.value,
 			input.description ?? null,
 			isSecretValue,
-			input.category ?? null
+			input.category ?? null,
 		];
 
 		if (isAsync) {
@@ -970,5 +983,12 @@ export async function deleteConfig(key: string): Promise<void> {
 	}
 }
 
-export type { Task, TaskCreateInput, TaskStatus, TaskMetadata } from './schema';
-export type { Config, ConfigCreateInput, ConfigUpdateInput } from './schema';
+export type {
+	Config,
+	ConfigCreateInput,
+	ConfigUpdateInput,
+	Task,
+	TaskCreateInput,
+	TaskMetadata,
+	TaskStatus,
+} from './schema';

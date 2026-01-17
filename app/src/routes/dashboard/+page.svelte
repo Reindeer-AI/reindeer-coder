@@ -1,92 +1,92 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
-	import { initAuth0, isAuthenticated, authToken, user } from '$lib/stores/auth';
-	import DashboardCard from '$lib/components/DashboardCard.svelte';
-	import type { DashboardMetrics } from '$lib/server/db';
+import { onDestroy, onMount } from 'svelte';
+import DashboardCard from '$lib/components/DashboardCard.svelte';
+import type { DashboardMetrics } from '$lib/server/db';
+import { authToken, initAuth0, isAuthenticated, user } from '$lib/stores/auth';
 
-	let loading = $state(true);
-	let error = $state<string | null>(null);
-	let metrics = $state<DashboardMetrics | null>(null);
-	let isAdmin = $state(false);
-	let pollInterval: ReturnType<typeof setInterval>;
+let loading = $state(true);
+let error = $state<string | null>(null);
+let metrics = $state<DashboardMetrics | null>(null);
+let isAdmin = $state(false);
+let pollInterval: ReturnType<typeof setInterval>;
 
-	const statusColors: Record<string, string> = {
-		pending: 'bg-yellow-100 text-yellow-700',
-		provisioning: 'bg-blue-100 text-blue-700',
-		initializing: 'bg-cyan-100 text-cyan-700',
-		cloning: 'bg-blue-100 text-blue-700',
-		running: 'bg-green-100 text-green-700',
-		completed: 'bg-emerald-100 text-emerald-700',
-		failed: 'bg-red-100 text-red-700',
-		stopped: 'bg-gray-100 text-gray-700',
-		deleted: 'bg-gray-100 text-gray-400'
-	};
+const statusColors: Record<string, string> = {
+	pending: 'bg-yellow-100 text-yellow-700',
+	provisioning: 'bg-blue-100 text-blue-700',
+	initializing: 'bg-cyan-100 text-cyan-700',
+	cloning: 'bg-blue-100 text-blue-700',
+	running: 'bg-green-100 text-green-700',
+	completed: 'bg-emerald-100 text-emerald-700',
+	failed: 'bg-red-100 text-red-700',
+	stopped: 'bg-gray-100 text-gray-700',
+	deleted: 'bg-gray-100 text-gray-400',
+};
 
-	const statusBgColors: Record<string, string> = {
-		pending: 'bg-yellow-500',
-		provisioning: 'bg-blue-500',
-		initializing: 'bg-cyan-500',
-		cloning: 'bg-blue-500',
-		running: 'bg-green-500',
-		completed: 'bg-emerald-500',
-		failed: 'bg-red-500',
-		stopped: 'bg-gray-500',
-		deleted: 'bg-gray-300'
-	};
+const statusBgColors: Record<string, string> = {
+	pending: 'bg-yellow-500',
+	provisioning: 'bg-blue-500',
+	initializing: 'bg-cyan-500',
+	cloning: 'bg-blue-500',
+	running: 'bg-green-500',
+	completed: 'bg-emerald-500',
+	failed: 'bg-red-500',
+	stopped: 'bg-gray-500',
+	deleted: 'bg-gray-300',
+};
 
-	const cliIcons: Record<string, string> = {
-		'claude-code': '🤖',
-		gemini: '✨',
-		codex: '💻'
-	};
+const cliIcons: Record<string, string> = {
+	'claude-code': '🤖',
+	gemini: '✨',
+	codex: '💻',
+};
 
-	async function fetchMetrics() {
-		const token = $authToken;
-		if (!token) return;
+async function fetchMetrics() {
+	const token = $authToken;
+	if (!token) return;
 
-		try {
-			const response = await fetch('/api/dashboard', {
-				headers: { Authorization: `Bearer ${token}` }
-			});
+	try {
+		const response = await fetch('/api/dashboard', {
+			headers: { Authorization: `Bearer ${token}` },
+		});
 
-			if (!response.ok) {
-				throw new Error('Failed to fetch dashboard metrics');
-			}
-
-			const data = await response.json();
-			metrics = data.metrics;
-			isAdmin = data.isAdmin;
-			error = null;
-		} catch (err) {
-			error = err instanceof Error ? err.message : 'Unknown error';
-		} finally {
-			loading = false;
+		if (!response.ok) {
+			throw new Error('Failed to fetch dashboard metrics');
 		}
+
+		const data = await response.json();
+		metrics = data.metrics;
+		isAdmin = data.isAdmin;
+		error = null;
+	} catch (err) {
+		error = err instanceof Error ? err.message : 'Unknown error';
+	} finally {
+		loading = false;
 	}
+}
 
-	function formatDate(dateStr: string): string {
-		const date = new Date(dateStr);
-		const now = new Date();
-		const diffMs = now.getTime() - date.getTime();
-		const diffMins = Math.floor(diffMs / 60000);
-		const diffHours = Math.floor(diffMs / 3600000);
-		const diffDays = Math.floor(diffMs / 86400000);
+function formatDate(dateStr: string): string {
+	const date = new Date(dateStr);
+	const now = new Date();
+	const diffMs = now.getTime() - date.getTime();
+	const diffMins = Math.floor(diffMs / 60000);
+	const diffHours = Math.floor(diffMs / 3600000);
+	const diffDays = Math.floor(diffMs / 86400000);
 
-		if (diffMins < 1) return 'just now';
-		if (diffMins < 60) return `${diffMins}m ago`;
-		if (diffHours < 24) return `${diffHours}h ago`;
-		return `${diffDays}d ago`;
-	}
+	if (diffMins < 1) return 'just now';
+	if (diffMins < 60) return `${diffMins}m ago`;
+	if (diffHours < 24) return `${diffHours}h ago`;
+	return `${diffDays}d ago`;
+}
 
-	onMount(async () => {
-		await initAuth0();
-		await fetchMetrics();
-		pollInterval = setInterval(fetchMetrics, 5000);
-	});
+onMount(async () => {
+	await initAuth0();
+	await fetchMetrics();
+	pollInterval = setInterval(fetchMetrics, 5000);
+});
 
-	onDestroy(() => {
-		if (pollInterval) clearInterval(pollInterval);
-	});
+onDestroy(() => {
+	if (pollInterval) clearInterval(pollInterval);
+});
 </script>
 
 <div class="min-h-screen bg-reindeer-cream">

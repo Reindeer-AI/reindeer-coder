@@ -116,4 +116,3 @@ ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIM
 
 -- Verify the configuration
 SELECT category, key, value, is_secret FROM config ORDER BY category, key;
-

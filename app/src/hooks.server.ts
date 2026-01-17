@@ -1,7 +1,7 @@
 import type { Handle } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
-import { LinearAgentMonitor } from './lib/server/tasks/linear-agent-monitor';
 import { initializeDefaultConfig } from './lib/server/config-service';
+import { LinearAgentMonitor } from './lib/server/tasks/linear-agent-monitor';
 
 // Initialize default configuration
 console.log('[Server] Initializing default configuration...');

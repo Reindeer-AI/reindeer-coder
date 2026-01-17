@@ -6,7 +6,7 @@ export const load: LayoutServerLoad = async () => {
 		env: {
 			GCP_PROJECT_ID: env.GCP_PROJECT_ID || '',
 			VM_USER: env.VM_USER || '',
-			GCP_ZONE: env.GCP_ZONE || 'us-central1-a'
-		}
+			GCP_ZONE: env.GCP_ZONE || 'us-central1-a',
+		},
 	};
 };

@@ -1,10 +1,10 @@
-import { json, error } from '@sveltejs/kit';
-import type { RequestHandler } from './$types';
-import { verifyToken, extractBearerToken } from '$lib/server/auth';
-import { getTaskById, updateTaskStatus, deleteTask, resetTaskForRetry } from '$lib/server/db';
-import { stopTask, sendInstruction, startTask, completeTask } from '$lib/server/vm/orchestrator';
-import { needsAttention, getTerminalPreview } from '$lib/server/terminal-storage';
+import { error, json } from '@sveltejs/kit';
+import { extractBearerToken, verifyToken } from '$lib/server/auth';
 import { configService } from '$lib/server/config-service';
+import { deleteTask, getTaskById, resetTaskForRetry, updateTaskStatus } from '$lib/server/db';
+import { getTerminalPreview, needsAttention } from '$lib/server/terminal-storage';
+import { completeTask, sendInstruction, startTask, stopTask } from '$lib/server/vm/orchestrator';
+import type { RequestHandler } from './$types';
 
 // GET /api/tasks/:id - Get a specific task
 export const GET: RequestHandler = async ({ params, request }) => {
@@ -24,7 +24,11 @@ export const GET: RequestHandler = async ({ params, request }) => {
 	}
 
 	// Check ownership (admins can see any task)
-	const adminPermission = await configService.get('auth.admin_permission', 'admin', 'ADMIN_PERMISSION');
+	const adminPermission = await configService.get(
+		'auth.admin_permission',
+		'admin',
+		'ADMIN_PERMISSION'
+	);
 	const isAdmin = user.permissions.includes(adminPermission);
 	if (!isAdmin && task.user_id !== user.sub) {
 		throw error(403, 'Access denied');
@@ -34,7 +38,7 @@ export const GET: RequestHandler = async ({ params, request }) => {
 	const taskWithExtras = {
 		...task,
 		needsAttention: needsAttention(task.id, task.status),
-		terminalPreview: getTerminalPreview(task.id, 20)
+		terminalPreview: getTerminalPreview(task.id, 20),
 	};
 
 	return json({ task: taskWithExtras });
@@ -58,7 +62,11 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 	}
 
 	// Check ownership
-	const adminPermission = await configService.get('auth.admin_permission', 'admin', 'ADMIN_PERMISSION');
+	const adminPermission = await configService.get(
+		'auth.admin_permission',
+		'admin',
+		'ADMIN_PERMISSION'
+	);
 	const isAdmin = user.permissions.includes(adminPermission);
 	if (!isAdmin && task.user_id !== user.sub) {
 		throw error(403, 'Access denied');
@@ -110,7 +118,11 @@ export const DELETE: RequestHandler = async ({ params, request }) => {
 	}
 
 	// Check ownership
-	const adminPermission = await configService.get('auth.admin_permission', 'admin', 'ADMIN_PERMISSION');
+	const adminPermission = await configService.get(
+		'auth.admin_permission',
+		'admin',
+		'ADMIN_PERMISSION'
+	);
 	const isAdmin = user.permissions.includes(adminPermission);
 	if (!isAdmin && task.user_id !== user.sub) {
 		throw error(403, 'Access denied');
@@ -149,7 +161,11 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 	}
 
 	// Check ownership
-	const adminPermission = await configService.get('auth.admin_permission', 'admin', 'ADMIN_PERMISSION');
+	const adminPermission = await configService.get(
+		'auth.admin_permission',
+		'admin',
+		'ADMIN_PERMISSION'
+	);
 	const isAdmin = user.permissions.includes(adminPermission);
 	if (!isAdmin && task.user_id !== user.sub) {
 		throw error(403, 'Access denied');
@@ -184,7 +200,11 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	}
 
 	// Check ownership
-	const adminPermission = await configService.get('auth.admin_permission', 'admin', 'ADMIN_PERMISSION');
+	const adminPermission = await configService.get(
+		'auth.admin_permission',
+		'admin',
+		'ADMIN_PERMISSION'
+	);
 	const isAdmin = user.permissions.includes(adminPermission);
 	if (!isAdmin && task.user_id !== user.sub) {
 		throw error(403, 'Access denied');

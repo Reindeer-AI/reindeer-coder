@@ -1,10 +1,10 @@
 import { error } from '@sveltejs/kit';
-import type { RequestHandler } from './$types';
-import { verifyToken, extractBearerToken } from '$lib/server/auth';
-import { getTaskById, appendTerminalBuffer } from '$lib/server/db';
-import { getActiveConnection, getConnectionStatus } from '$lib/server/vm/orchestrator';
-import { readTerminalFile } from '$lib/server/terminal-storage';
+import { extractBearerToken, verifyToken } from '$lib/server/auth';
 import { configService } from '$lib/server/config-service';
+import { getTaskById } from '$lib/server/db';
+import { readTerminalFile } from '$lib/server/terminal-storage';
+import { getActiveConnection, getConnectionStatus } from '$lib/server/vm/orchestrator';
+import type { RequestHandler } from './$types';
 
 // SSE endpoint for terminal streaming
 export const GET: RequestHandler = async ({ params, request, url }) => {
@@ -24,7 +24,11 @@ export const GET: RequestHandler = async ({ params, request, url }) => {
 	}
 
 	// Check ownership
-	const adminPermission = await configService.get('auth.admin_permission', 'admin', 'ADMIN_PERMISSION');
+	const adminPermission = await configService.get(
+		'auth.admin_permission',
+		'admin',
+		'ADMIN_PERMISSION'
+	);
 	const isAdmin = user.permissions.includes(adminPermission);
 	if (!isAdmin && task.user_id !== user.sub) {
 		throw error(403, 'Access denied');
@@ -57,12 +61,16 @@ export const GET: RequestHandler = async ({ params, request, url }) => {
 				const fileContent = readTerminalFile(params.id, null);
 				if (fileContent) {
 					initialBuffer = fileContent;
-					console.log(`[terminal:sse] Sending initial buffer from file (${fileContent.length} chars)`);
+					console.log(
+						`[terminal:sse] Sending initial buffer from file (${fileContent.length} chars)`
+					);
 				}
 			} else if (task.terminal_buffer) {
 				// Legacy: read from DB
 				initialBuffer = task.terminal_buffer;
-				console.log(`[terminal:sse] Sending initial buffer from DB (${task.terminal_buffer.length} chars)`);
+				console.log(
+					`[terminal:sse] Sending initial buffer from DB (${task.terminal_buffer.length} chars)`
+				);
 			}
 
 			if (initialBuffer) {
@@ -138,7 +146,9 @@ export const GET: RequestHandler = async ({ params, request, url }) => {
 
 				// Check for status changes
 				if (currentTask.status !== lastStatus) {
-					console.log(`[terminal:sse] Task ${params.id}: status changed from ${lastStatus} to ${currentTask.status}`);
+					console.log(
+						`[terminal:sse] Task ${params.id}: status changed from ${lastStatus} to ${currentTask.status}`
+					);
 					const statusData = JSON.stringify({ type: 'status', status: currentTask.status });
 					try {
 						controller.enqueue(encoder.encode(`data: ${statusData}\n\n`));
@@ -166,7 +176,9 @@ export const GET: RequestHandler = async ({ params, request, url }) => {
 				const currentConnStatus = getConnectionStatus(params.id);
 				const currentConnStatusValue = currentConnStatus?.status || null;
 				if (currentConnStatusValue !== lastConnStatus) {
-					console.log(`[terminal:sse] Task ${params.id}: connection status changed from ${lastConnStatus} to ${currentConnStatusValue}`);
+					console.log(
+						`[terminal:sse] Task ${params.id}: connection status changed from ${lastConnStatus} to ${currentConnStatusValue}`
+					);
 					if (currentConnStatus) {
 						const connData = JSON.stringify({ type: 'connection', ...currentConnStatus });
 						try {
@@ -185,15 +197,15 @@ export const GET: RequestHandler = async ({ params, request, url }) => {
 				clearInterval(pollInterval);
 				safeClose();
 			});
-		}
+		},
 	});
 
 	return new Response(stream, {
 		headers: {
 			'Content-Type': 'text/event-stream',
 			'Cache-Control': 'no-cache',
-			'Connection': 'keep-alive'
-		}
+			Connection: 'keep-alive',
+		},
 	});
 };
 
@@ -215,7 +227,11 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	}
 
 	// Check ownership
-	const adminPermission = await configService.get('auth.admin_permission', 'admin', 'ADMIN_PERMISSION');
+	const adminPermission = await configService.get(
+		'auth.admin_permission',
+		'admin',
+		'ADMIN_PERMISSION'
+	);
 	const isAdmin = user.permissions.includes(adminPermission);
 	if (!isAdmin && task.user_id !== user.sub) {
 		throw error(403, 'Access denied');
@@ -243,6 +259,6 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	conn.write(input);
 
 	return new Response(JSON.stringify({ success: true }), {
-		headers: { 'Content-Type': 'application/json' }
+		headers: { 'Content-Type': 'application/json' },
 	});
 };

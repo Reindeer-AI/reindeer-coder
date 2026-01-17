@@ -1,5 +1,13 @@
 import Database from 'better-sqlite3';
-import type { DbAdapter, DbRow } from './adapter';
+import type { DbAdapter, DbRow, SqlValue } from './adapter';
+
+interface PragmaColumnInfo {
+	name: string;
+	type: string;
+	notnull: number;
+	dflt_value: string | null;
+	pk: number;
+}
 
 /**
  * SQLite database adapter using better-sqlite3
@@ -15,26 +23,26 @@ export class SqliteAdapter implements DbAdapter {
 		this.db.exec(sql);
 	}
 
-	get(sql: string, params: any[]): DbRow | undefined {
+	get(sql: string, params: SqlValue[]): DbRow | undefined {
 		const stmt = this.db.prepare(sql);
 		return stmt.get(...params) as DbRow | undefined;
 	}
 
-	all(sql: string, params: any[]): DbRow[] {
+	all(sql: string, params: SqlValue[]): DbRow[] {
 		const stmt = this.db.prepare(sql);
 		return stmt.all(...params) as DbRow[];
 	}
 
-	run(sql: string, params: any[]): void {
+	run(sql: string, params: SqlValue[]): void {
 		const stmt = this.db.prepare(sql);
 		stmt.run(...params);
 	}
 
 	async hasColumn(tableName: string, columnName: string): Promise<boolean> {
 		try {
-			const result = this.db.prepare(`PRAGMA table_info(${tableName})`).all() as any[];
-			return result.some((col: any) => col.name === columnName);
-		} catch (error) {
+			const result = this.db.prepare(`PRAGMA table_info(${tableName})`).all() as PragmaColumnInfo[];
+			return result.some((col) => col.name === columnName);
+		} catch {
 			return false;
 		}
 	}

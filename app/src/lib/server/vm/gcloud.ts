@@ -1,6 +1,6 @@
-import { spawn, type ChildProcess } from 'child_process';
-import { env } from '$env/dynamic/private';
+import { spawn } from 'node:child_process';
 import * as pty from 'node-pty';
+import { env } from '$env/dynamic/private';
 
 export interface GcloudConnection {
 	process: pty.IPty;
@@ -36,7 +36,7 @@ export function connectToVM(vmName: string, zone?: string, project?: string): Gc
 		`--zone=${gcpZone}`,
 		`--project=${gcpProject}`,
 		'--tunnel-through-iap',
-		'--quiet' // Skip prompts
+		'--quiet', // Skip prompts
 	];
 
 	console.log(`[gcloud] Spawning SSH with PTY: gcloud ${args.join(' ')}`);
@@ -48,7 +48,7 @@ export function connectToVM(vmName: string, zone?: string, project?: string): Gc
 		cols: 120,
 		rows: 40,
 		cwd: process.cwd(),
-		env: process.env as { [key: string]: string }
+		env: process.env as { [key: string]: string },
 	});
 
 	const dataCallbacks: ((data: string) => void)[] = [];
@@ -57,12 +57,16 @@ export function connectToVM(vmName: string, zone?: string, project?: string): Gc
 
 	proc.onData((data: string) => {
 		console.log(`[gcloud:pty] ${data.substring(0, 200)}${data.length > 200 ? '...' : ''}`);
-		dataCallbacks.forEach((cb) => cb(data));
+		dataCallbacks.forEach((cb) => {
+			cb(data);
+		});
 	});
 
 	proc.onExit(({ exitCode }) => {
 		console.log(`[gcloud:close] PTY process exited with code ${exitCode}`);
-		closeCallbacks.forEach((cb) => cb(exitCode));
+		closeCallbacks.forEach((cb) => {
+			cb(exitCode);
+		});
 	});
 
 	return {
@@ -88,7 +92,7 @@ export function connectToVM(vmName: string, zone?: string, project?: string): Gc
 		},
 		close: () => {
 			proc.kill();
-		}
+		},
 	};
 }
 
@@ -117,12 +121,12 @@ export async function execOnVM(
 		'--tunnel-through-iap',
 		'--quiet',
 		'--command',
-		command
+		command,
 	];
 
 	return new Promise((resolve, reject) => {
 		const proc = spawn('gcloud', args, {
-			stdio: ['pipe', 'pipe', 'pipe']
+			stdio: ['pipe', 'pipe', 'pipe'],
 		});
 
 		let stdout = '';
@@ -138,7 +142,7 @@ export async function execOnVM(
 
 		proc.on('error', reject);
 
-		proc.on('close', (code) => {
+		proc.on('close', (code: number | null) => {
 			resolve({ stdout, stderr, exitCode: code || 0 });
 		});
 	});
@@ -169,12 +173,12 @@ export async function copyToVM(
 		`--zone=${gcpZone}`,
 		`--project=${gcpProject}`,
 		'--tunnel-through-iap',
-		'--quiet'
+		'--quiet',
 	];
 
 	return new Promise((resolve, reject) => {
 		const proc = spawn('gcloud', args, {
-			stdio: ['pipe', 'pipe', 'pipe']
+			stdio: ['pipe', 'pipe', 'pipe'],
 		});
 
 		let stderr = '';
@@ -185,7 +189,7 @@ export async function copyToVM(
 
 		proc.on('error', reject);
 
-		proc.on('close', (code) => {
+		proc.on('close', (code: number | null) => {
 			if (code === 0) {
 				resolve();
 			} else {

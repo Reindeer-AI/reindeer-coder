@@ -1,150 +1,150 @@
 {
-  "name": "vibe-coding",
-  "displayName": "Vibe Coding",
-  "description": "Connect to your Vibe Coding remote workspaces",
-  "version": "0.1.0",
-  "publisher": "reindeer-ai",
-  "repository": {
-    "type": "git",
-    "url": "https://gitlab.com/reindeerai/experimental.git"
-  },
-  "engines": {
-    "vscode": "^1.85.0"
-  },
-  "categories": [
-    "Other"
-  ],
-  "activationEvents": [
-    "onView:vibeCodingTasks"
-  ],
-  "main": "./dist/extension.js",
-  "contributes": {
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "vibe-coding",
-          "title": "Vibe Coding",
-          "icon": "resources/icon.svg"
-        }
-      ]
-    },
-    "views": {
-      "vibe-coding": [
-        {
-          "id": "vibeCodingTasks",
-          "name": "Tasks"
-        }
-      ]
-    },
-    "commands": [
-      {
-        "command": "vibeCoding.login",
-        "title": "Vibe Coding: Login"
-      },
-      {
-        "command": "vibeCoding.logout",
-        "title": "Vibe Coding: Logout"
-      },
-      {
-        "command": "vibeCoding.refreshTasks",
-        "title": "Vibe Coding: Refresh Tasks",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "vibeCoding.connectTask",
-        "title": "Open Workspace",
-        "icon": "$(folder-opened)"
-      },
-      {
-        "command": "vibeCoding.connectTerminalOnly",
-        "title": "Open Terminal",
-        "icon": "$(terminal)"
-      },
-      {
-        "command": "vibeCoding.disconnectTask",
-        "title": "Disconnect from Task"
-      },
-      {
-        "command": "vibeCoding.showDebugInfo",
-        "title": "Vibe Coding: Show Debug Info"
-      }
-    ],
-    "menus": {
-      "view/title": [
-        {
-          "command": "vibeCoding.refreshTasks",
-          "when": "view == vibeCodingTasks",
-          "group": "navigation"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "vibeCoding.connectTask",
-          "when": "view == vibeCodingTasks && viewItem == task",
-          "group": "inline"
-        },
-        {
-          "command": "vibeCoding.connectTerminalOnly",
-          "when": "view == vibeCodingTasks && viewItem == task",
-          "group": "inline"
-        }
-      ]
-    },
-    "configuration": {
-      "title": "Vibe Coding",
-      "properties": {
-        "vibeCoding.apiUrl": {
-          "type": "string",
-          "default": "https://vibe.reindeerlabs.ai",
-          "description": "Vibe Coding API URL"
-        },
-        "vibeCoding.auth0Domain": {
-          "type": "string",
-          "default": "dev-0d0uyl2iqc17144b.us.auth0.com",
-          "description": "Auth0 domain"
-        },
-        "vibeCoding.auth0ClientId": {
-          "type": "string",
-          "default": "i6QxH7zvtkkm5pD1iCS4mcIavVXhuOiZ",
-          "description": "Auth0 client ID (same as web app)"
-        },
-        "vibeCoding.auth0Audience": {
-          "type": "string",
-          "default": "https://vibe.reindeerlabs.ai",
-          "description": "Auth0 API audience (should match web app)"
-        },
-        "vibeCoding.auth0OrganizationId": {
-          "type": "string",
-          "default": "org_9WU9bq88J0jAPjmM",
-          "description": "Auth0 organization ID (optional, leave empty if not using organizations)"
-        },
-        "vibeCoding.gcpProject": {
-          "type": "string",
-          "default": "reindeer-vibe",
-          "description": "GCP project ID for compute instances"
-        },
-        "vibeCoding.mountPath": {
-          "type": "string",
-          "default": "~/vibe-mounts",
-          "description": "Local path for SSHFS mounts (uses short task IDs as folder names)"
-        }
-      }
-    }
-  },
-  "scripts": {
-    "vscode:prepublish": "npm run build",
-    "build": "node build.js",
-    "watch": "node build.js --watch",
-    "package": "vsce package"
-  },
-  "devDependencies": {
-    "@types/node": "^20.10.0",
-    "@types/vscode": "^1.85.0",
-    "@vscode/vsce": "^3.7.1",
-    "esbuild": "^0.19.0",
-    "typescript": "^5.3.0"
-  },
-  "dependencies": {
-    "axios": "^1.6.0"
-  }
+	"name": "reindeer-coder",
+	"displayName": "Reindeer Coder",
+	"description": "Connect to your Reindeer Coder remote workspaces",
+	"version": "0.1.0",
+	"publisher": "reindeer-ai",
+	"repository": {
+		"type": "git",
+		"url": "https://gitlab.com/reindeerai/reindeer-coder.git"
+	},
+	"engines": {
+		"vscode": "^1.85.0"
+	},
+	"categories": [
+		"Other"
+	],
+	"activationEvents": [
+		"onView:vibeCodingTasks"
+	],
+	"main": "./dist/extension.js",
+	"contributes": {
+		"viewsContainers": {
+			"activitybar": [
+				{
+					"id": "vibe-coding",
+					"title": "Vibe Coding",
+					"icon": "resources/icon.svg"
+				}
+			]
+		},
+		"views": {
+			"vibe-coding": [
+				{
+					"id": "vibeCodingTasks",
+					"name": "Tasks"
+				}
+			]
+		},
+		"commands": [
+			{
+				"command": "vibeCoding.login",
+				"title": "Vibe Coding: Login"
+			},
+			{
+				"command": "vibeCoding.logout",
+				"title": "Vibe Coding: Logout"
+			},
+			{
+				"command": "vibeCoding.refreshTasks",
+				"title": "Vibe Coding: Refresh Tasks",
+				"icon": "$(refresh)"
+			},
+			{
+				"command": "vibeCoding.connectTask",
+				"title": "Open Workspace",
+				"icon": "$(folder-opened)"
+			},
+			{
+				"command": "vibeCoding.connectTerminalOnly",
+				"title": "Open Terminal",
+				"icon": "$(terminal)"
+			},
+			{
+				"command": "vibeCoding.disconnectTask",
+				"title": "Disconnect from Task"
+			},
+			{
+				"command": "vibeCoding.showDebugInfo",
+				"title": "Vibe Coding: Show Debug Info"
+			}
+		],
+		"menus": {
+			"view/title": [
+				{
+					"command": "vibeCoding.refreshTasks",
+					"when": "view == vibeCodingTasks",
+					"group": "navigation"
+				}
+			],
+			"view/item/context": [
+				{
+					"command": "vibeCoding.connectTask",
+					"when": "view == vibeCodingTasks && viewItem == task",
+					"group": "inline"
+				},
+				{
+					"command": "vibeCoding.connectTerminalOnly",
+					"when": "view == vibeCodingTasks && viewItem == task",
+					"group": "inline"
+				}
+			]
+		},
+		"configuration": {
+			"title": "Vibe Coding",
+			"properties": {
+				"vibeCoding.apiUrl": {
+					"type": "string",
+					"default": "https://vibe.reindeerlabs.ai",
+					"description": "Vibe Coding API URL"
+				},
+				"vibeCoding.auth0Domain": {
+					"type": "string",
+					"default": "dev-0d0uyl2iqc17144b.us.auth0.com",
+					"description": "Auth0 domain"
+				},
+				"vibeCoding.auth0ClientId": {
+					"type": "string",
+					"default": "i6QxH7zvtkkm5pD1iCS4mcIavVXhuOiZ",
+					"description": "Auth0 client ID (same as web app)"
+				},
+				"vibeCoding.auth0Audience": {
+					"type": "string",
+					"default": "https://vibe.reindeerlabs.ai",
+					"description": "Auth0 API audience (should match web app)"
+				},
+				"vibeCoding.auth0OrganizationId": {
+					"type": "string",
+					"default": "org_9WU9bq88J0jAPjmM",
+					"description": "Auth0 organization ID (optional, leave empty if not using organizations)"
+				},
+				"vibeCoding.gcpProject": {
+					"type": "string",
+					"default": "reindeer-vibe",
+					"description": "GCP project ID for compute instances"
+				},
+				"vibeCoding.mountPath": {
+					"type": "string",
+					"default": "~/vibe-mounts",
+					"description": "Local path for SSHFS mounts (uses short task IDs as folder names)"
+				}
+			}
+		}
+	},
+	"scripts": {
+		"vscode:prepublish": "npm run build",
+		"build": "node build.js",
+		"watch": "node build.js --watch",
+		"package": "vsce package"
+	},
+	"devDependencies": {
+		"@types/node": "^20.10.0",
+		"@types/vscode": "^1.85.0",
+		"@vscode/vsce": "^3.7.1",
+		"esbuild": "^0.19.0",
+		"typescript": "^5.3.0"
+	},
+	"dependencies": {
+		"axios": "^1.6.0"
+	}
 }

@@ -1,373 +1,376 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
-	import { isAuthenticated, authToken } from '$lib/stores/auth';
+import { onMount } from 'svelte';
+import { goto } from '$app/navigation';
+import { authToken, isAuthenticated } from '$lib/stores/auth';
 
-	interface Config {
-		key: string;
-		value: string;
-		description: string | null;
-		is_secret: boolean;
-		category: string | null;
-		created_at: string;
-		updated_at: string;
-	}
+interface Config {
+	key: string;
+	value: string;
+	description: string | null;
+	is_secret: boolean;
+	category: string | null;
+	created_at: string;
+	updated_at: string;
+}
 
-	interface Repository {
-		id: string;
-		name: string;
-		url: string;
-		baseBranch: string;
-		allowManual: boolean;
-	}
+interface Repository {
+	id: string;
+	name: string;
+	url: string;
+	baseBranch: string;
+	allowManual: boolean;
+}
 
-	let configs: Config[] = [];
-	let loading = true;
-	let error = '';
-	let saving = false;
+let configs: Config[] = [];
+let loading = true;
+let error = '';
+let saving = false;
 
-	// Edit state
-	let editingKey: string | null = null;
-	let editValue = '';
-	let editDescription = '';
-	let editIsSecret = false;
-	let editCategory = '';
+// Edit state
+let editingKey: string | null = null;
+let editValue = '';
+let editDescription = '';
+let editIsSecret = false;
+let editCategory = '';
 
-	// New config state
-	let showNewConfigModal = false;
-	let newKey = '';
-	let newValue = '';
-	let newDescription = '';
-	let newIsSecret = false;
-	let newCategory = '';
+// New config state
+let showNewConfigModal = false;
+let newKey = '';
+let newValue = '';
+let newDescription = '';
+let newIsSecret = false;
+let newCategory = '';
 
-	// Repository management state
-	let showRepoModal = false;
-	let repositories: Repository[] = [];
-	let editingRepoIndex: number | null = null;
-	let repoForm = {
-		id: '',
-		name: '',
-		url: '',
-		baseBranch: 'main',
-		allowManual: true
-	};
+// Repository management state
+let showRepoModal = false;
+let repositories: Repository[] = [];
+let editingRepoIndex: number | null = null;
+let repoForm = {
+	id: '',
+	name: '',
+	url: '',
+	baseBranch: 'main',
+	allowManual: true,
+};
 
-	// Group configs by category
-	$: configsByCategory = configs.reduce((acc, config) => {
+// Group configs by category
+$: configsByCategory = configs.reduce(
+	(acc, config) => {
 		const cat = config.category || 'Uncategorized';
 		if (!acc[cat]) acc[cat] = [];
 		acc[cat].push(config);
 		return acc;
-	}, {} as Record<string, Config[]>);
+	},
+	{} as Record<string, Config[]>
+);
 
-	onMount(async () => {
-		if (!$isAuthenticated) {
-			goto('/');
+onMount(async () => {
+	if (!$isAuthenticated) {
+		goto('/');
+		return;
+	}
+	await loadConfigs();
+	await loadRepositories();
+});
+
+async function loadConfigs() {
+	loading = true;
+	error = '';
+	try {
+		const token = $authToken;
+		if (!token) {
+			error = 'Not authenticated';
 			return;
 		}
-		await loadConfigs();
-		await loadRepositories();
-	});
 
-	async function loadConfigs() {
-		loading = true;
-		error = '';
-		try {
-			const token = $authToken;
-			if (!token) {
-				error = 'Not authenticated';
-				return;
-			}
-
-			const res = await fetch('/api/config', {
-				headers: {
-					'Authorization': `Bearer ${token}`
-				}
-			});
-			if (!res.ok) {
-				if (res.status === 403) {
-					error = 'Access denied. Admin permission required.';
-				} else {
-					throw new Error('Failed to load configuration');
-				}
-				return;
-			}
-			const data = await res.json();
-			configs = data.configs;
-		} catch (err: any) {
-			error = err.message || 'Failed to load configuration';
-			console.error(err);
-		} finally {
-			loading = false;
-		}
-	}
-
-	function startEdit(config: Config) {
-		editingKey = config.key;
-		editValue = config.is_secret ? '' : config.value; // Don't show secret values
-		editDescription = config.description || '';
-		editIsSecret = config.is_secret;
-		editCategory = config.category || '';
-	}
-
-	function cancelEdit() {
-		editingKey = null;
-		editValue = '';
-		editDescription = '';
-		editIsSecret = false;
-		editCategory = '';
-	}
-
-	async function saveEdit(key: string) {
-		saving = true;
-		try {
-			const token = $authToken;
-			if (!token) {
-				error = 'Not authenticated';
-				return;
-			}
-
-			// If editing a secret and value is empty, don't update it
-			const isSecretAndEmpty = editIsSecret && editValue.trim() === '';
-
-			const res = await fetch('/api/config', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					'Authorization': `Bearer ${token}`
-				},
-				body: JSON.stringify({
-					key,
-					value: isSecretAndEmpty ? '[UNCHANGED]' : editValue,
-					description: editDescription || null,
-					is_secret: editIsSecret,
-					category: editCategory || null
-				})
-			});
-
-			if (!res.ok) throw new Error('Failed to save configuration');
-
-			await loadConfigs();
-			cancelEdit();
-		} catch (err: any) {
-			error = err.message || 'Failed to save configuration';
-			console.error(err);
-		} finally {
-			saving = false;
-		}
-	}
-
-	async function deleteConfig(key: string) {
-		if (!confirm(`Are you sure you want to delete "${key}"?`)) return;
-
-		try {
-			const token = $authToken;
-			if (!token) {
-				error = 'Not authenticated';
-				return;
-			}
-
-			const res = await fetch(`/api/config/${encodeURIComponent(key)}`, {
-				method: 'DELETE',
-				headers: {
-					'Authorization': `Bearer ${token}`
-				}
-			});
-
-			if (!res.ok) throw new Error('Failed to delete configuration');
-
-			await loadConfigs();
-		} catch (err: any) {
-			error = err.message || 'Failed to delete configuration';
-			console.error(err);
-		}
-	}
-
-	async function loadRepositories() {
-		try {
-			const token = $authToken;
-			if (!token) return;
-
-			const res = await fetch('/api/config/repositories.list', {
-				headers: { 'Authorization': `Bearer ${token}` }
-			});
-
-			if (res.ok) {
-				const data = await res.json();
-				try {
-					repositories = JSON.parse(data.config.value);
-				} catch {
-					repositories = [];
-				}
+		const res = await fetch('/api/config', {
+			headers: {
+				Authorization: `Bearer ${token}`,
+			},
+		});
+		if (!res.ok) {
+			if (res.status === 403) {
+				error = 'Access denied. Admin permission required.';
 			} else {
+				throw new Error('Failed to load configuration');
+			}
+			return;
+		}
+		const data = await res.json();
+		configs = data.configs;
+	} catch (err: any) {
+		error = err.message || 'Failed to load configuration';
+		console.error(err);
+	} finally {
+		loading = false;
+	}
+}
+
+function startEdit(config: Config) {
+	editingKey = config.key;
+	editValue = config.is_secret ? '' : config.value; // Don't show secret values
+	editDescription = config.description || '';
+	editIsSecret = config.is_secret;
+	editCategory = config.category || '';
+}
+
+function cancelEdit() {
+	editingKey = null;
+	editValue = '';
+	editDescription = '';
+	editIsSecret = false;
+	editCategory = '';
+}
+
+async function saveEdit(key: string) {
+	saving = true;
+	try {
+		const token = $authToken;
+		if (!token) {
+			error = 'Not authenticated';
+			return;
+		}
+
+		// If editing a secret and value is empty, don't update it
+		const isSecretAndEmpty = editIsSecret && editValue.trim() === '';
+
+		const res = await fetch('/api/config', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				Authorization: `Bearer ${token}`,
+			},
+			body: JSON.stringify({
+				key,
+				value: isSecretAndEmpty ? '[UNCHANGED]' : editValue,
+				description: editDescription || null,
+				is_secret: editIsSecret,
+				category: editCategory || null,
+			}),
+		});
+
+		if (!res.ok) throw new Error('Failed to save configuration');
+
+		await loadConfigs();
+		cancelEdit();
+	} catch (err: any) {
+		error = err.message || 'Failed to save configuration';
+		console.error(err);
+	} finally {
+		saving = false;
+	}
+}
+
+async function deleteConfig(key: string) {
+	if (!confirm(`Are you sure you want to delete "${key}"?`)) return;
+
+	try {
+		const token = $authToken;
+		if (!token) {
+			error = 'Not authenticated';
+			return;
+		}
+
+		const res = await fetch(`/api/config/${encodeURIComponent(key)}`, {
+			method: 'DELETE',
+			headers: {
+				Authorization: `Bearer ${token}`,
+			},
+		});
+
+		if (!res.ok) throw new Error('Failed to delete configuration');
+
+		await loadConfigs();
+	} catch (err: any) {
+		error = err.message || 'Failed to delete configuration';
+		console.error(err);
+	}
+}
+
+async function loadRepositories() {
+	try {
+		const token = $authToken;
+		if (!token) return;
+
+		const res = await fetch('/api/config/repositories.list', {
+			headers: { Authorization: `Bearer ${token}` },
+		});
+
+		if (res.ok) {
+			const data = await res.json();
+			try {
+				repositories = JSON.parse(data.config.value);
+			} catch {
 				repositories = [];
 			}
-		} catch (err) {
-			console.error('Failed to load repositories:', err);
+		} else {
 			repositories = [];
 		}
+	} catch (err) {
+		console.error('Failed to load repositories:', err);
+		repositories = [];
 	}
+}
 
-	function openRepoModal(index: number | null = null) {
-		if (index !== null) {
-			editingRepoIndex = index;
-			const repo = repositories[index];
-			repoForm = { ...repo };
+function openRepoModal(index: number | null = null) {
+	if (index !== null) {
+		editingRepoIndex = index;
+		const repo = repositories[index];
+		repoForm = { ...repo };
+	} else {
+		editingRepoIndex = null;
+		repoForm = {
+			id: '',
+			name: '',
+			url: '',
+			baseBranch: 'main',
+			allowManual: true,
+		};
+	}
+	showRepoModal = true;
+}
+
+async function saveRepository() {
+	saving = true;
+	try {
+		const token = $authToken;
+		if (!token) {
+			error = 'Not authenticated';
+			return;
+		}
+
+		if (!repoForm.id || !repoForm.name || !repoForm.url) {
+			error = 'ID, name, and URL are required';
+			return;
+		}
+
+		let updatedRepos = [...repositories];
+		if (editingRepoIndex !== null) {
+			updatedRepos[editingRepoIndex] = { ...repoForm };
 		} else {
-			editingRepoIndex = null;
-			repoForm = {
-				id: '',
-				name: '',
-				url: '',
-				baseBranch: 'main',
-				allowManual: true
-			};
+			// Check for duplicate ID
+			if (updatedRepos.some((r) => r.id === repoForm.id)) {
+				error = 'Repository ID already exists';
+				return;
+			}
+			updatedRepos.push({ ...repoForm });
 		}
-		showRepoModal = true;
+
+		const res = await fetch('/api/config', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				Authorization: `Bearer ${token}`,
+			},
+			body: JSON.stringify({
+				key: 'repositories.list',
+				value: JSON.stringify(updatedRepos),
+				description: 'List of pre-configured repositories',
+				is_secret: false,
+				category: 'Repositories',
+			}),
+		});
+
+		if (!res.ok) throw new Error('Failed to save repository');
+
+		await loadRepositories();
+		await loadConfigs();
+		showRepoModal = false;
+		error = '';
+	} catch (err: any) {
+		error = err.message || 'Failed to save repository';
+	} finally {
+		saving = false;
 	}
+}
 
-	async function saveRepository() {
-		saving = true;
-		try {
-			const token = $authToken;
-			if (!token) {
-				error = 'Not authenticated';
-				return;
-			}
+async function deleteRepository(index: number) {
+	if (!confirm(`Delete repository "${repositories[index].name}"?`)) return;
 
-			if (!repoForm.id || !repoForm.name || !repoForm.url) {
-				error = 'ID, name, and URL are required';
-				return;
-			}
-
-			let updatedRepos = [...repositories];
-			if (editingRepoIndex !== null) {
-				updatedRepos[editingRepoIndex] = { ...repoForm };
-			} else {
-				// Check for duplicate ID
-				if (updatedRepos.some(r => r.id === repoForm.id)) {
-					error = 'Repository ID already exists';
-					return;
-				}
-				updatedRepos.push({ ...repoForm });
-			}
-
-			const res = await fetch('/api/config', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					'Authorization': `Bearer ${token}`
-				},
-				body: JSON.stringify({
-					key: 'repositories.list',
-					value: JSON.stringify(updatedRepos),
-					description: 'List of pre-configured repositories',
-					is_secret: false,
-					category: 'Repositories'
-				})
-			});
-
-			if (!res.ok) throw new Error('Failed to save repository');
-
-			await loadRepositories();
-			await loadConfigs();
-			showRepoModal = false;
-			error = '';
-		} catch (err: any) {
-			error = err.message || 'Failed to save repository';
-		} finally {
-			saving = false;
+	saving = true;
+	try {
+		const token = $authToken;
+		if (!token) {
+			error = 'Not authenticated';
+			return;
 		}
+
+		const updatedRepos = repositories.filter((_, i) => i !== index);
+
+		const res = await fetch('/api/config', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				Authorization: `Bearer ${token}`,
+			},
+			body: JSON.stringify({
+				key: 'repositories.list',
+				value: JSON.stringify(updatedRepos),
+				description: 'List of pre-configured repositories',
+				is_secret: false,
+				category: 'Repositories',
+			}),
+		});
+
+		if (!res.ok) throw new Error('Failed to delete repository');
+
+		await loadRepositories();
+		await loadConfigs();
+	} catch (err: any) {
+		error = err.message || 'Failed to delete repository';
+	} finally {
+		saving = false;
 	}
+}
 
-	async function deleteRepository(index: number) {
-		if (!confirm(`Delete repository "${repositories[index].name}"?`)) return;
-
-		saving = true;
-		try {
-			const token = $authToken;
-			if (!token) {
-				error = 'Not authenticated';
-				return;
-			}
-
-			const updatedRepos = repositories.filter((_, i) => i !== index);
-
-			const res = await fetch('/api/config', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					'Authorization': `Bearer ${token}`
-				},
-				body: JSON.stringify({
-					key: 'repositories.list',
-					value: JSON.stringify(updatedRepos),
-					description: 'List of pre-configured repositories',
-					is_secret: false,
-					category: 'Repositories'
-				})
-			});
-
-			if (!res.ok) throw new Error('Failed to delete repository');
-
-			await loadRepositories();
-			await loadConfigs();
-		} catch (err: any) {
-			error = err.message || 'Failed to delete repository';
-		} finally {
-			saving = false;
+async function saveNewConfig() {
+	saving = true;
+	try {
+		if (!newKey.trim() || !newValue.trim()) {
+			error = 'Key and value are required';
+			return;
 		}
-	}
 
-	async function saveNewConfig() {
-		saving = true;
-		try {
-			if (!newKey.trim() || !newValue.trim()) {
-				error = 'Key and value are required';
-				return;
-			}
-
-			const token = $authToken;
-			if (!token) {
-				error = 'Not authenticated';
-				return;
-			}
-
-			const res = await fetch('/api/config', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					'Authorization': `Bearer ${token}`
-				},
-				body: JSON.stringify({
-					key: newKey.trim(),
-					value: newValue,
-					description: newDescription || null,
-					is_secret: newIsSecret,
-					category: newCategory || null
-				})
-			});
-
-			if (!res.ok) {
-				const data = await res.json();
-				throw new Error(data.message || 'Failed to create configuration');
-			}
-
-			await loadConfigs();
-			showNewConfigModal = false;
-			newKey = '';
-			newValue = '';
-			newDescription = '';
-			newIsSecret = false;
-			newCategory = '';
-		} catch (err: any) {
-			error = err.message || 'Failed to create configuration';
-			console.error(err);
-		} finally {
-			saving = false;
+		const token = $authToken;
+		if (!token) {
+			error = 'Not authenticated';
+			return;
 		}
+
+		const res = await fetch('/api/config', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				Authorization: `Bearer ${token}`,
+			},
+			body: JSON.stringify({
+				key: newKey.trim(),
+				value: newValue,
+				description: newDescription || null,
+				is_secret: newIsSecret,
+				category: newCategory || null,
+			}),
+		});
+
+		if (!res.ok) {
+			const data = await res.json();
+			throw new Error(data.message || 'Failed to create configuration');
+		}
+
+		await loadConfigs();
+		showNewConfigModal = false;
+		newKey = '';
+		newValue = '';
+		newDescription = '';
+		newIsSecret = false;
+		newCategory = '';
+	} catch (err: any) {
+		error = err.message || 'Failed to create configuration';
+		console.error(err);
+	} finally {
+		saving = false;
 	}
+}
 </script>
 
 <div class="min-h-screen bg-gray-50">

@@ -1,5 +1,5 @@
 import { env } from '$env/dynamic/private';
-import { getAllConfig, getConfigByKey, setConfig as dbSetConfig } from './db';
+import { setConfig as dbSetConfig, getAllConfig, getConfigByKey } from './db';
 import type { Config } from './db/schema';
 
 /**
@@ -50,8 +50,9 @@ class ConfigService {
 		await this.loadConfig();
 
 		// 1. Check database config (highest priority)
-		if (this.cache.has(key)) {
-			return this.cache.get(key)!;
+		const cachedValue = this.cache.get(key);
+		if (cachedValue !== undefined) {
+			return cachedValue;
 		}
 
 		// 2. Check environment variable (fallback)
@@ -70,8 +71,9 @@ class ConfigService {
 	 */
 	getSync(key: string, defaultValue: string = '', envKey?: string): string {
 		// 1. Check database config cache
-		if (this.cache.has(key)) {
-			return this.cache.get(key)!;
+		const cachedValue = this.cache.get(key);
+		if (cachedValue !== undefined) {
+			return cachedValue;
 		}
 
 		// 2. Check environment variable
@@ -87,7 +89,13 @@ class ConfigService {
 	/**
 	 * Set a configuration value in the database and update cache
 	 */
-	async set(key: string, value: string, description?: string, isSecret?: boolean, category?: string): Promise<void> {
+	async set(
+		key: string,
+		value: string,
+		description?: string,
+		isSecret?: boolean,
+		category?: string
+	): Promise<void> {
 		await dbSetConfig({ key, value, description, is_secret: isSecret, category });
 		this.cache.set(key, value);
 		console.log(`[ConfigService] Updated config: ${key}`);
@@ -107,10 +115,10 @@ class ConfigService {
 	 */
 	async getAllForDisplay(): Promise<Array<Config & { value: string }>> {
 		const configs = await getAllConfig();
-		return configs.map(config => ({
+		return configs.map((config) => ({
 			...config,
 			// Mask secret values for display
-			value: config.is_secret ? '[REDACTED]' : config.value
+			value: config.is_secret ? '[REDACTED]' : config.value,
 		}));
 	}
 }
@@ -128,37 +136,37 @@ export const DEFAULT_CONFIG = {
 		value: 'Code Agent',
 		description: 'Application brand name shown in the UI',
 		category: 'UI',
-		is_secret: false
+		is_secret: false,
 	},
 	'ui.logo_path': {
 		value: '/logo.png',
 		description: 'Path to the application logo',
 		category: 'UI',
-		is_secret: false
+		is_secret: false,
 	},
 	'ui.primary_color': {
 		value: '#2563eb',
 		description: 'Primary brand color (hex)',
 		category: 'UI',
-		is_secret: false
+		is_secret: false,
 	},
 	'ui.primary_color_dark': {
 		value: '#1e40af',
 		description: 'Dark variant of primary brand color',
 		category: 'UI',
-		is_secret: false
+		is_secret: false,
 	},
 	'ui.primary_color_light': {
 		value: '#3b82f6',
 		description: 'Light variant of primary brand color',
 		category: 'UI',
-		is_secret: false
+		is_secret: false,
 	},
 	'ui.background_color': {
 		value: '#f9fafb',
 		description: 'Background color (hex)',
 		category: 'UI',
-		is_secret: false
+		is_secret: false,
 	},
 
 	// Git Configuration
@@ -166,31 +174,31 @@ export const DEFAULT_CONFIG = {
 		value: 'https://gitlab.com',
 		description: 'Git repository base URL',
 		category: 'Git',
-		is_secret: false
+		is_secret: false,
 	},
 	'git.org': {
 		value: 'your-org',
 		description: 'Git organization/group name',
 		category: 'Git',
-		is_secret: false
+		is_secret: false,
 	},
 	'git.user': {
 		value: 'oauth2',
 		description: 'Git user for authentication',
 		category: 'Git',
-		is_secret: false
+		is_secret: false,
 	},
 	'git.default_base_branch': {
 		value: 'main',
 		description: 'Default base branch for new tasks',
 		category: 'Git',
-		is_secret: false
+		is_secret: false,
 	},
 	'git.branch_prefix': {
 		value: 'agent',
 		description: 'Prefix for generated branch names',
 		category: 'Git',
-		is_secret: false
+		is_secret: false,
 	},
 
 	// VM Configuration
@@ -198,25 +206,25 @@ export const DEFAULT_CONFIG = {
 		value: 'agent',
 		description: 'VM user account name',
 		category: 'VM',
-		is_secret: false
+		is_secret: false,
 	},
 	'vm.machine_type': {
 		value: 'e2-standard-4',
 		description: 'GCP VM machine type',
 		category: 'VM',
-		is_secret: false
+		is_secret: false,
 	},
 	'vm.image_family': {
 		value: 'ubuntu-2204-lts',
 		description: 'VM image family',
 		category: 'VM',
-		is_secret: false
+		is_secret: false,
 	},
 	'vm.image_project': {
 		value: 'ubuntu-os-cloud',
 		description: 'VM image project',
 		category: 'VM',
-		is_secret: false
+		is_secret: false,
 	},
 
 	// Agent Configuration
@@ -224,7 +232,7 @@ export const DEFAULT_CONFIG = {
 		value: 'claude-code',
 		description: 'Default coding CLI (claude-code, gemini, codex)',
 		category: 'Agent',
-		is_secret: false
+		is_secret: false,
 	},
 	'agent.default_system_prompt': {
 		value: `IMPORTANT INSTRUCTIONS:
@@ -237,7 +245,7 @@ export const DEFAULT_CONFIG = {
 7. Environment setup: If there's a .env.example file, create .env from it (cp .env.example .env) and ask the user if any additional environment variables need to be configured`,
 		description: 'Default system prompt for agents',
 		category: 'Agent',
-		is_secret: false
+		is_secret: false,
 	},
 
 	// Authentication Configuration
@@ -245,7 +253,7 @@ export const DEFAULT_CONFIG = {
 		value: 'admin',
 		description: 'Permission string for admin users',
 		category: 'Authentication',
-		is_secret: false
+		is_secret: false,
 	},
 
 	// Email Configuration
@@ -253,39 +261,40 @@ export const DEFAULT_CONFIG = {
 		value: 'example.com',
 		description: 'Email domain for generated email addresses',
 		category: 'Email',
-		is_secret: false
+		is_secret: false,
 	},
 	'email.fallback_address': {
 		value: 'agent@example.com',
 		description: 'Fallback email address for automated actions',
 		category: 'Email',
-		is_secret: false
+		is_secret: false,
 	},
 
 	// Secrets Configuration (paths to Secret Manager secrets)
 	'secrets.anthropic_api_key': {
 		value: '',
-		description: 'Secret Manager path for Anthropic API key (e.g., projects/123/secrets/name/versions/latest)',
+		description:
+			'Secret Manager path for Anthropic API key (e.g., projects/123/secrets/name/versions/latest)',
 		category: 'Secrets',
-		is_secret: false
+		is_secret: false,
 	},
 	'secrets.openai_api_key': {
 		value: '',
 		description: 'Secret Manager path for OpenAI API key',
 		category: 'Secrets',
-		is_secret: false
+		is_secret: false,
 	},
 	'secrets.gitlab_token': {
 		value: '',
 		description: 'Secret Manager path for GitLab token',
 		category: 'Secrets',
-		is_secret: false
+		is_secret: false,
 	},
 	'secrets.linear_api_key': {
 		value: '',
 		description: 'Secret Manager path for Linear API key',
 		category: 'Secrets',
-		is_secret: false
+		is_secret: false,
 	},
 };
 
@@ -308,7 +317,7 @@ export async function initializeDefaultConfig(): Promise<void> {
 						value: config.value,
 						description: config.description,
 						is_secret: config.is_secret,
-						category: config.category
+						category: config.category,
 					});
 					console.log(`[ConfigService] Initialized config: ${key}`);
 				}

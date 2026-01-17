@@ -23,7 +23,7 @@ repos:
     hooks:
       - id: typescript-check-app
         name: TypeScript check (app)
-        entry: bash -c 'cd app && bunx svelte-kit sync && bunx svelte-check --tsconfig ./tsconfig.json'
+        entry: bash -c 'export PATH="$HOME/.bun/bin:$PATH" && cd app && bunx svelte-kit sync && bunx svelte-check --tsconfig ./tsconfig.json'
         language: system
         types_or: [ts, tsx]
         pass_filenames: false
@@ -32,7 +32,7 @@ repos:
 
       - id: biome-check
         name: Biome lint and format
-        entry: bun run lint:fix
+        entry: bash -c 'export PATH="$HOME/.bun/bin:$PATH" && bun run lint:fix'
         language: system
         types_or: [javascript, jsx, json, ts, tsx, svelte]
         pass_filenames: false
@@ -41,7 +41,7 @@ repos:
 
       - id: bun-lockfile-check
         name: Bun lockfile validation
-        entry: bun install --frozen-lockfile
+        entry: bash -c 'export PATH="$HOME/.bun/bin:$PATH" && bun install --frozen-lockfile'
         language: system
         pass_filenames: false
         files: ^(package\.json|bun\.lock|app/package\.json|vscode-extension/package\.json)$

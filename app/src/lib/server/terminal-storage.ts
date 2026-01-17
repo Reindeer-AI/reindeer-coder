@@ -1,5 +1,12 @@
-import { writeFileSync, appendFileSync, readFileSync, existsSync, mkdirSync, statSync } from 'fs';
-import { join } from 'path';
+import {
+	appendFileSync,
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	statSync,
+	writeFileSync,
+} from 'node:fs';
+import { join } from 'node:path';
 
 // Directory for terminal files (relative to project root)
 const TERMINAL_FILES_DIR = './terminal_files';
@@ -25,7 +32,7 @@ function redactSensitive(text: string): string {
 		// Generic Bearer tokens in export commands
 		/export\s+[A-Z_]*(?:KEY|TOKEN|SECRET)[A-Z_]*=["']?([^"'\s]+)["']?/gi,
 		// Environment variable assignments with sensitive names
-		/(ANTHROPIC_API_KEY|OPENAI_API_KEY|GITLAB_TOKEN|GIT_TOKEN|API_KEY|SECRET|TOKEN|PASSWORD)=["']?([^"'\s\r\n]+)["']?/gi
+		/(ANTHROPIC_API_KEY|OPENAI_API_KEY|GITLAB_TOKEN|GIT_TOKEN|API_KEY|SECRET|TOKEN|PASSWORD)=["']?([^"'\s\r\n]+)["']?/gi,
 	];
 
 	let result = text;
@@ -39,11 +46,11 @@ function redactSensitive(text: string): string {
 			if (match.includes('=')) {
 				const eqIndex = match.indexOf('=');
 				const varPart = match.substring(0, eqIndex + 1);
-				return varPart + '[REDACTED]';
+				return `${varPart}[REDACTED]`;
 			}
 			// For standalone keys, show first 8 chars then redact
 			if (match.length > 12) {
-				return match.substring(0, 8) + '...[REDACTED]';
+				return `${match.substring(0, 8)}...[REDACTED]`;
 			}
 			return '[REDACTED]';
 		});
@@ -86,7 +93,10 @@ export function initTerminalFile(taskId: string): string {
 			console.log(`[terminal-storage] Initialized terminal file: ${filePath}`);
 		}
 	} catch (error) {
-		console.error(`[terminal-storage] Failed to initialize terminal file for task ${taskId}:`, error);
+		console.error(
+			`[terminal-storage] Failed to initialize terminal file for task ${taskId}:`,
+			error
+		);
 		throw error;
 	}
 
@@ -104,7 +114,10 @@ export function appendToTerminalFile(taskId: string, content: string): void {
 		const redacted = redactSensitive(content);
 		appendFileSync(filePath, redacted, 'utf-8');
 	} catch (error) {
-		console.error(`[terminal-storage] Failed to append to terminal file for task ${taskId}:`, error);
+		console.error(
+			`[terminal-storage] Failed to append to terminal file for task ${taskId}:`,
+			error
+		);
 		throw error;
 	}
 }
@@ -150,7 +163,10 @@ export function readTerminalFileFromOffset(taskId: string, offset: number): stri
 		const content = readFileSync(filePath, 'utf-8');
 		return content.slice(offset);
 	} catch (error) {
-		console.error(`[terminal-storage] Failed to read terminal file from offset for task ${taskId}:`, error);
+		console.error(
+			`[terminal-storage] Failed to read terminal file from offset for task ${taskId}:`,
+			error
+		);
 		return null;
 	}
 }
@@ -205,12 +221,12 @@ function stripAnsi(text: string): string {
 	// - OSC sequences: ESC ] ... (BEL or ESC \) - window titles, etc.
 	// - Simple escapes: ESC (letter) - like ESC c for reset
 	return text
-		.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')  // CSI sequences
-		.replace(/\x1b\][^\x07]*\x07/g, '')      // OSC sequences (BEL terminated)
-		.replace(/\x1b\][^\x1b]*\x1b\\/g, '')    // OSC sequences (ST terminated)
-		.replace(/\x1b[()][AB012]/g, '')         // Character set selection
-		.replace(/\x1b[a-zA-Z]/g, '')            // Simple escape sequences
-		.replace(/\r/g, '');                      // Carriage returns
+		.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '') // CSI sequences
+		.replace(/\x1b\][^\x07]*\x07/g, '') // OSC sequences (BEL terminated)
+		.replace(/\x1b\][^\x1b]*\x1b\\/g, '') // OSC sequences (ST terminated)
+		.replace(/\x1b[()][AB012]/g, '') // Character set selection
+		.replace(/\x1b[a-zA-Z]/g, '') // Simple escape sequences
+		.replace(/\r/g, ''); // Carriage returns
 }
 
 /**
@@ -231,13 +247,15 @@ function renderTerminalAsText(content: string, rows: number): string {
 		const trimmed = line.trim();
 
 		// Skip system messages
-		if (trimmed.startsWith('[system]') ||
-		    trimmed.startsWith('[step') ||
-		    trimmed.startsWith('[error]') ||
-		    trimmed.startsWith('[config]') ||
-		    trimmed.startsWith('[ssh]') ||
-		    trimmed.startsWith('[user]') ||
-		    trimmed.startsWith('====')) {
+		if (
+			trimmed.startsWith('[system]') ||
+			trimmed.startsWith('[step') ||
+			trimmed.startsWith('[error]') ||
+			trimmed.startsWith('[config]') ||
+			trimmed.startsWith('[ssh]') ||
+			trimmed.startsWith('[user]') ||
+			trimmed.startsWith('====')
+		) {
 			continue;
 		}
 

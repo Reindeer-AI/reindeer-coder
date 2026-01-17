@@ -1,7 +1,14 @@
 import { Gitlab } from '@gitbeaker/rest';
 import { env } from '$env/dynamic/private';
-import type { GitLabMergeRequest, GitLabMRNote, GitLabDiff, MRReviewContext } from './types';
 import { getGitLabToken } from '../secrets';
+import type {
+	GitLabDiff,
+	GitLabDiscussion,
+	GitLabMergeRequest,
+	GitLabMRNote,
+	GitLabUser,
+	MRReviewContext,
+} from './types';
 
 export class GitLabClient {
 	private client: InstanceType<typeof Gitlab> | null = null;
@@ -21,7 +28,10 @@ export class GitLabClient {
 		}
 
 		await this.initPromise;
-		return this.client!;
+		if (!this.client) {
+			throw new Error('GitLab client failed to initialize');
+		}
+		return this.client;
 	}
 
 	private async initialize(): Promise<void> {
@@ -30,7 +40,7 @@ export class GitLabClient {
 
 		this.client = new Gitlab({
 			token,
-			host
+			host,
 		});
 	}
 
@@ -39,12 +49,12 @@ export class GitLabClient {
 	 * Example: https://gitlab.com/reindeerai/reindeer-ts/-/merge_requests/123
 	 */
 	parseMRUrl(url: string): { projectPath: string; mrIid: number } | null {
-		const match = url.match(/gitlab\.com\/([^\/]+\/[^\/]+)\/-\/merge_requests\/(\d+)/);
+		const match = url.match(/gitlab\.com\/([^/]+\/[^/]+)\/-\/merge_requests\/(\d+)/);
 		if (!match) return null;
 
 		return {
 			projectPath: match[1],
-			mrIid: parseInt(match[2], 10)
+			mrIid: parseInt(match[2], 10),
 		};
 	}
 
@@ -52,7 +62,7 @@ export class GitLabClient {
 	 * Extract MR URL from terminal output or GitLab URLs
 	 */
 	extractMRUrl(text: string): string | null {
-		const match = text.match(/(https:\/\/gitlab\.com\/[^\/]+\/[^\/]+\/-\/merge_requests\/\d+)/);
+		const match = text.match(/(https:\/\/gitlab\.com\/[^/]+\/[^/]+\/-\/merge_requests\/\d+)/);
 		return match ? match[1] : null;
 	}
 
@@ -73,11 +83,13 @@ export class GitLabClient {
 		const client = await this.ensureInitialized();
 		const response = await client.MergeRequestNotes.all(projectPath, mrIid, {
 			perPage: 100,
-			showExpanded: true
+			showExpanded: true,
 		});
 		// The API returns a paginated response, extract the data array
-		const notes = Array.isArray(response) ? response : (response as any).data || [];
-		return notes as GitLabMRNote[];
+		const notes = Array.isArray(response)
+			? response
+			: (response as unknown as { data?: GitLabMRNote[] }).data || [];
+		return notes as unknown as GitLabMRNote[];
 	}
 
 	/**
@@ -96,7 +108,7 @@ export class GitLabClient {
 		const [mr, notes, diffs] = await Promise.all([
 			this.getMergeRequest(projectPath, mrIid),
 			this.getMergeRequestNotes(projectPath, mrIid),
-			this.getMergeRequestDiffs(projectPath, mrIid)
+			this.getMergeRequestDiffs(projectPath, mrIid),
 		]);
 
 		// Filter out system notes and get only human comments
@@ -109,7 +121,7 @@ export class GitLabClient {
 			mr,
 			notes: humanNotes,
 			diffs,
-			unresolvedThreads
+			unresolvedThreads,
 		};
 	}
 
@@ -149,20 +161,17 @@ export class GitLabClient {
 		}
 
 		// Find the discussion by looking for notes that belong to it
-		const discussions = await client.MergeRequestDiscussions.all(projectPath, mrIid);
-		const discussion = discussions.find((d: any) => d.notes.some((n: any) => n.id === noteId));
+		const discussions = (await client.MergeRequestDiscussions.all(
+			projectPath,
+			mrIid
+		)) as unknown as GitLabDiscussion[];
+		const discussion = discussions.find((d) => d.notes.some((n) => n.id === noteId));
 
 		if (!discussion) {
 			throw new Error(`Discussion for note ${noteId} not found`);
 		}
 
-		await client.MergeRequestDiscussions.addNote(
-			projectPath,
-			mrIid,
-			discussion.id,
-			noteId,
-			body
-		);
+		await client.MergeRequestDiscussions.addNote(projectPath, mrIid, discussion.id, noteId, body);
 	}
 
 	/**
@@ -173,12 +182,10 @@ export class GitLabClient {
 		try {
 			const client = await this.ensureInitialized();
 			// Use all() with search parameter to find users by email
-			const users = await client.Users.all({ search: email });
+			const users = (await client.Users.all({ search: email })) as GitLabUser[];
 
 			// Search returns an array, find exact match on email
-			const matchingUser = Array.isArray(users)
-				? users.find((u: any) => u.email?.toLowerCase() === email.toLowerCase())
-				: null;
+			const matchingUser = users.find((u) => u.email?.toLowerCase() === email.toLowerCase());
 
 			return matchingUser?.id || null;
 		} catch (error) {
@@ -197,7 +204,7 @@ export class GitLabClient {
 		try {
 			const client = await this.ensureInitialized();
 			await client.MergeRequests.edit(projectPath, mrIid, {
-				reviewerIds: reviewerIds
+				reviewerIds: reviewerIds,
 			});
 			console.log(`[GitLabClient] Assigned reviewers ${reviewerIds.join(', ')} to MR !${mrIid}`);
 		} catch (error) {

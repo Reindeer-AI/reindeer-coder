@@ -66,3 +66,15 @@ export interface MRReviewContext {
 	diffs: GitLabDiff[];
 	unresolvedThreads: GitLabMRNote[];
 }
+
+export interface GitLabDiscussion {
+	id: string;
+	notes: GitLabMRNote[];
+}
+
+export interface GitLabUser {
+	id: number;
+	username: string;
+	name: string;
+	email?: string;
+}

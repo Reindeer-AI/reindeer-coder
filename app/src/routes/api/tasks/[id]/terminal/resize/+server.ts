@@ -1,9 +1,9 @@
 import { error } from '@sveltejs/kit';
-import type { RequestHandler } from './$types';
-import { verifyToken, extractBearerToken } from '$lib/server/auth';
+import { extractBearerToken, verifyToken } from '$lib/server/auth';
+import { configService } from '$lib/server/config-service';
 import { getTaskById } from '$lib/server/db';
 import { resizeTerminal } from '$lib/server/vm/orchestrator';
-import { configService } from '$lib/server/config-service';
+import type { RequestHandler } from './$types';
 
 // POST to send terminal resize event
 export const POST: RequestHandler = async ({ params, request }) => {
@@ -23,7 +23,11 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	}
 
 	// Check ownership
-	const adminPermission = await configService.get('auth.admin_permission', 'admin', 'ADMIN_PERMISSION');
+	const adminPermission = await configService.get(
+		'auth.admin_permission',
+		'admin',
+		'ADMIN_PERMISSION'
+	);
 	const isAdmin = user.permissions.includes(adminPermission);
 	if (!isAdmin && task.user_id !== user.sub) {
 		throw error(403, 'Access denied');
@@ -46,6 +50,6 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	resizeTerminal(params.id, cols, rows);
 
 	return new Response(JSON.stringify({ success: true }), {
-		headers: { 'Content-Type': 'application/json' }
+		headers: { 'Content-Type': 'application/json' },
 	});
 };

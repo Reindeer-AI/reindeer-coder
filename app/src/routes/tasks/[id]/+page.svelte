@@ -1,255 +1,255 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
-	import { page } from '$app/stores';
-	import { goto } from '$app/navigation';
-	import { initAuth0, isAuthenticated, authToken } from '$lib/stores/auth';
-	import Terminal from '$lib/components/Terminal.svelte';
-	import type { Task } from '$lib/server/db/schema';
+import { onDestroy, onMount } from 'svelte';
+import { goto } from '$app/navigation';
+import { page } from '$app/stores';
+import Terminal from '$lib/components/Terminal.svelte';
+import type { Task } from '$lib/server/db/schema';
+import { authToken, initAuth0, isAuthenticated } from '$lib/stores/auth';
 
-	// Runtime env vars from layout server load
-	let { data } = $props();
-	const VM_USER = data.env.VM_USER;
-	const GCP_PROJECT_ID = data.env.GCP_PROJECT_ID;
-	const GCP_ZONE = data.env.GCP_ZONE;
+// Runtime env vars from layout server load
+let { data } = $props();
+const VM_USER = data.env.VM_USER;
+const GCP_PROJECT_ID = data.env.GCP_PROJECT_ID;
+const GCP_ZONE = data.env.GCP_ZONE;
 
-	interface ConnectionStatus {
-		status: 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | null;
-		tmuxSession?: string;
-		lastActivity?: string;
-	}
+interface ConnectionStatus {
+	status: 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | null;
+	tmuxSession?: string;
+	lastActivity?: string;
+}
 
-	let task = $state<Task | null>(null);
-	let loading = $state(true);
-	let error = $state<string | null>(null);
-	let retrying = $state(false);
-	let reconnecting = $state(false);
-	let completing = $state(false);
-	let pollInterval: ReturnType<typeof setInterval>;
-	let connectionStatus = $state<ConnectionStatus>({ status: null });
-	let showCopiedModal = $state(false);
+let task = $state<Task | null>(null);
+let loading = $state(true);
+let error = $state<string | null>(null);
+let retrying = $state(false);
+let reconnecting = $state(false);
+let completing = $state(false);
+let pollInterval: ReturnType<typeof setInterval>;
+let connectionStatus = $state<ConnectionStatus>({ status: null });
+let showCopiedModal = $state(false);
 
-	const statusColors: Record<string, string> = {
-		pending: 'bg-yellow-100 text-yellow-700 border-yellow-300',
-		provisioning: 'bg-blue-100 text-blue-700 border-blue-300',
-		initializing: 'bg-cyan-100 text-cyan-700 border-cyan-300',
-		cloning: 'bg-blue-100 text-blue-700 border-blue-300',
-		running: 'bg-green-100 text-green-700 border-green-300',
-		completed: 'bg-emerald-100 text-emerald-700 border-emerald-300',
-		failed: 'bg-red-100 text-red-700 border-red-300',
-		stopped: 'bg-gray-100 text-gray-700 border-gray-300',
-		deleted: 'bg-gray-100 text-gray-400 border-gray-200'
-	};
+const statusColors: Record<string, string> = {
+	pending: 'bg-yellow-100 text-yellow-700 border-yellow-300',
+	provisioning: 'bg-blue-100 text-blue-700 border-blue-300',
+	initializing: 'bg-cyan-100 text-cyan-700 border-cyan-300',
+	cloning: 'bg-blue-100 text-blue-700 border-blue-300',
+	running: 'bg-green-100 text-green-700 border-green-300',
+	completed: 'bg-emerald-100 text-emerald-700 border-emerald-300',
+	failed: 'bg-red-100 text-red-700 border-red-300',
+	stopped: 'bg-gray-100 text-gray-700 border-gray-300',
+	deleted: 'bg-gray-100 text-gray-400 border-gray-200',
+};
 
-	const cliLabels: Record<string, string> = {
-		'claude-code': 'Claude Code',
-		'gemini': 'Gemini',
-		'codex': 'Codex'
-	};
+const cliLabels: Record<string, string> = {
+	'claude-code': 'Claude Code',
+	gemini: 'Gemini',
+	codex: 'Codex',
+};
 
-	async function fetchTask() {
-		const token = $authToken;
-		if (!token) return;
+async function fetchTask() {
+	const token = $authToken;
+	if (!token) return;
 
-		try {
-			const response = await fetch(`/api/tasks/${$page.params.id}`, {
-				headers: { 'Authorization': `Bearer ${token}` }
-			});
+	try {
+		const response = await fetch(`/api/tasks/${$page.params.id}`, {
+			headers: { Authorization: `Bearer ${token}` },
+		});
 
-			if (!response.ok) {
-				if (response.status === 404) {
-					throw new Error('Task not found');
-				}
-				throw new Error('Failed to fetch task');
+		if (!response.ok) {
+			if (response.status === 404) {
+				throw new Error('Task not found');
 			}
-
-			const data = await response.json();
-			task = data.task;
-			error = null;
-		} catch (err) {
-			error = err instanceof Error ? err.message : 'Unknown error';
-		} finally {
-			loading = false;
+			throw new Error('Failed to fetch task');
 		}
+
+		const data = await response.json();
+		task = data.task;
+		error = null;
+	} catch (err) {
+		error = err instanceof Error ? err.message : 'Unknown error';
+	} finally {
+		loading = false;
 	}
+}
 
-	async function deleteTask() {
-		if (!task || !confirm('Are you sure you want to delete this task?')) return;
+async function deleteTask() {
+	if (!task || !confirm('Are you sure you want to delete this task?')) return;
 
-		try {
-			const response = await fetch(`/api/tasks/${task.id}`, {
-				method: 'DELETE',
-				headers: { 'Authorization': `Bearer ${$authToken}` }
-			});
+	try {
+		const response = await fetch(`/api/tasks/${task.id}`, {
+			method: 'DELETE',
+			headers: { Authorization: `Bearer ${$authToken}` },
+		});
 
-			if (!response.ok) {
-				throw new Error('Failed to delete task');
-			}
-
-			goto('/');
-		} catch (err) {
-			alert(err instanceof Error ? err.message : 'Failed to delete task');
+		if (!response.ok) {
+			throw new Error('Failed to delete task');
 		}
+
+		goto('/');
+	} catch (err) {
+		alert(err instanceof Error ? err.message : 'Failed to delete task');
 	}
+}
 
-	async function retryTask() {
-		if (!task) return;
+async function retryTask() {
+	if (!task) return;
 
-		retrying = true;
-		try {
-			const response = await fetch(`/api/tasks/${task.id}`, {
-				method: 'POST',
-				headers: { 'Authorization': `Bearer ${$authToken}` }
-			});
+	retrying = true;
+	try {
+		const response = await fetch(`/api/tasks/${task.id}`, {
+			method: 'POST',
+			headers: { Authorization: `Bearer ${$authToken}` },
+		});
 
-			if (!response.ok) {
-				const data = await response.json().catch(() => ({}));
-				throw new Error(data.message || 'Failed to retry task');
-			}
-
-			// Refresh task data
-			await fetchTask();
-		} catch (err) {
-			alert(err instanceof Error ? err.message : 'Failed to retry task');
-		} finally {
-			retrying = false;
-		}
-	}
-
-	async function completeTask() {
-		if (!task || !confirm('Mark this task as completed and delete all resources?')) return;
-
-		completing = true;
-		try {
-			const response = await fetch(`/api/tasks/${task.id}`, {
-				method: 'PUT',
-				headers: { 'Authorization': `Bearer ${$authToken}` }
-			});
-
-			if (!response.ok) {
-				const data = await response.json().catch(() => ({}));
-				throw new Error(data.message || 'Failed to complete task');
-			}
-
-			// Refresh task data
-			await fetchTask();
-		} catch (err) {
-			alert(err instanceof Error ? err.message : 'Failed to complete task');
-		} finally {
-			completing = false;
-		}
-	}
-
-	async function reconnectSSH() {
-		if (!task) return;
-
-		reconnecting = true;
-		try {
-			const response = await fetch(`/api/tasks/${task.id}/reconnect`, {
-				method: 'POST',
-				headers: { 'Authorization': `Bearer ${$authToken}` }
-			});
-
+		if (!response.ok) {
 			const data = await response.json().catch(() => ({}));
-
-			if (!response.ok) {
-				throw new Error(data.message || 'Failed to reconnect');
-			}
-		} catch (err) {
-			alert(err instanceof Error ? err.message : 'Failed to reconnect');
-		} finally {
-			reconnecting = false;
+			throw new Error(data.message || 'Failed to retry task');
 		}
-	}
 
-	function formatDate(dateStr: string | null): string {
-		if (!dateStr) return '-';
-		return new Date(dateStr).toLocaleString();
-	}
-
-	function handleConnectionChange(status: ConnectionStatus) {
-		connectionStatus = status;
-	}
-
-	async function copySSHCommand() {
-		if (!task || !task.vm_name) return;
-
-		const project = GCP_PROJECT_ID;
-		const zone = task.vm_zone || GCP_ZONE;
-
-		// If we don't have the tmux session yet, derive it from task ID (same as orchestrator)
-		const tmuxSession = connectionStatus.tmuxSession || `vibe-${task.id.slice(0, 8)}`;
-
-		const sshCommand = `gcloud compute ssh ${task.vm_name} --project=${project} --zone=${zone} --tunnel-through-iap --ssh-flag="-t" -- sudo -u ${VM_USER} tmux attach-session -t ${tmuxSession}`;
-
-		try {
-			await navigator.clipboard.writeText(sshCommand);
-			showCopiedModal = true;
-			setTimeout(() => {
-				showCopiedModal = false;
-			}, 3000); // Hide after 3 seconds
-		} catch (err) {
-			alert('Failed to copy to clipboard');
-		}
-	}
-
-	async function copyBrowserTunnelCommand() {
-		if (!task || !task.vm_name) return;
-
-		const project = GCP_PROJECT_ID;
-		const zone = task.vm_zone || GCP_ZONE;
-
-		const tunnelCommand = `gcloud compute ssh ${task.vm_name} --project=${project} --zone=${zone} --tunnel-through-iap -- -N -L 3715:127.0.0.1:5173`;
-
-		try {
-			await navigator.clipboard.writeText(tunnelCommand);
-			showCopiedModal = true;
-			setTimeout(() => {
-				showCopiedModal = false;
-			}, 3000); // Hide after 3 seconds
-		} catch (err) {
-			alert('Failed to copy to clipboard');
-		}
-	}
-
-	async function copySshfsCommand() {
-		if (!task || !task.vm_name) return;
-
-		const project = GCP_PROJECT_ID;
-		const zone = task.vm_zone || GCP_ZONE;
-		const mountPoint = `~/vibe-mounts/${task.id}`;
-
-		// Use gcloud compute start-iap-tunnel (works reliably with SSHFS)
-		// Format matches the VS Code extension and manual testing
-		const sshfsCommand = `mkdir -p ${mountPoint} && sshfs -o ProxyCommand="gcloud compute start-iap-tunnel ${task.vm_name} %p --listen-on-stdin --project=${project} --zone=${zone}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentityFile=~/.ssh/google_compute_engine ${VM_USER}@${task.vm_name}:/home/${VM_USER}/workspace ${mountPoint}`;
-
-		try {
-			await navigator.clipboard.writeText(sshfsCommand);
-			showCopiedModal = true;
-			setTimeout(() => {
-				showCopiedModal = false;
-			}, 3000); // Hide after 3 seconds
-		} catch (err) {
-			alert('Failed to copy to clipboard');
-		}
-	}
-
-	const connectionStatusColors: Record<string, string> = {
-		connecting: 'bg-yellow-100 text-yellow-700 border-yellow-300',
-		connected: 'bg-green-100 text-green-700 border-green-300',
-		disconnected: 'bg-red-100 text-red-700 border-red-300',
-		reconnecting: 'bg-orange-100 text-orange-700 border-orange-300'
-	};
-
-	onMount(async () => {
-		await initAuth0();
+		// Refresh task data
 		await fetchTask();
-		// Poll for status updates
-		pollInterval = setInterval(fetchTask, 5000);
-	});
+	} catch (err) {
+		alert(err instanceof Error ? err.message : 'Failed to retry task');
+	} finally {
+		retrying = false;
+	}
+}
 
-	onDestroy(() => {
-		if (pollInterval) clearInterval(pollInterval);
-	});
+async function completeTask() {
+	if (!task || !confirm('Mark this task as completed and delete all resources?')) return;
+
+	completing = true;
+	try {
+		const response = await fetch(`/api/tasks/${task.id}`, {
+			method: 'PUT',
+			headers: { Authorization: `Bearer ${$authToken}` },
+		});
+
+		if (!response.ok) {
+			const data = await response.json().catch(() => ({}));
+			throw new Error(data.message || 'Failed to complete task');
+		}
+
+		// Refresh task data
+		await fetchTask();
+	} catch (err) {
+		alert(err instanceof Error ? err.message : 'Failed to complete task');
+	} finally {
+		completing = false;
+	}
+}
+
+async function reconnectSSH() {
+	if (!task) return;
+
+	reconnecting = true;
+	try {
+		const response = await fetch(`/api/tasks/${task.id}/reconnect`, {
+			method: 'POST',
+			headers: { Authorization: `Bearer ${$authToken}` },
+		});
+
+		const data = await response.json().catch(() => ({}));
+
+		if (!response.ok) {
+			throw new Error(data.message || 'Failed to reconnect');
+		}
+	} catch (err) {
+		alert(err instanceof Error ? err.message : 'Failed to reconnect');
+	} finally {
+		reconnecting = false;
+	}
+}
+
+function formatDate(dateStr: string | null): string {
+	if (!dateStr) return '-';
+	return new Date(dateStr).toLocaleString();
+}
+
+function handleConnectionChange(status: ConnectionStatus) {
+	connectionStatus = status;
+}
+
+async function copySSHCommand() {
+	if (!task || !task.vm_name) return;
+
+	const project = GCP_PROJECT_ID;
+	const zone = task.vm_zone || GCP_ZONE;
+
+	// If we don't have the tmux session yet, derive it from task ID (same as orchestrator)
+	const tmuxSession = connectionStatus.tmuxSession || `vibe-${task.id.slice(0, 8)}`;
+
+	const sshCommand = `gcloud compute ssh ${task.vm_name} --project=${project} --zone=${zone} --tunnel-through-iap --ssh-flag="-t" -- sudo -u ${VM_USER} tmux attach-session -t ${tmuxSession}`;
+
+	try {
+		await navigator.clipboard.writeText(sshCommand);
+		showCopiedModal = true;
+		setTimeout(() => {
+			showCopiedModal = false;
+		}, 3000); // Hide after 3 seconds
+	} catch (err) {
+		alert('Failed to copy to clipboard');
+	}
+}
+
+async function copyBrowserTunnelCommand() {
+	if (!task || !task.vm_name) return;
+
+	const project = GCP_PROJECT_ID;
+	const zone = task.vm_zone || GCP_ZONE;
+
+	const tunnelCommand = `gcloud compute ssh ${task.vm_name} --project=${project} --zone=${zone} --tunnel-through-iap -- -N -L 3715:127.0.0.1:5173`;
+
+	try {
+		await navigator.clipboard.writeText(tunnelCommand);
+		showCopiedModal = true;
+		setTimeout(() => {
+			showCopiedModal = false;
+		}, 3000); // Hide after 3 seconds
+	} catch (err) {
+		alert('Failed to copy to clipboard');
+	}
+}
+
+async function copySshfsCommand() {
+	if (!task || !task.vm_name) return;
+
+	const project = GCP_PROJECT_ID;
+	const zone = task.vm_zone || GCP_ZONE;
+	const mountPoint = `~/vibe-mounts/${task.id}`;
+
+	// Use gcloud compute start-iap-tunnel (works reliably with SSHFS)
+	// Format matches the VS Code extension and manual testing
+	const sshfsCommand = `mkdir -p ${mountPoint} && sshfs -o ProxyCommand="gcloud compute start-iap-tunnel ${task.vm_name} %p --listen-on-stdin --project=${project} --zone=${zone}" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentityFile=~/.ssh/google_compute_engine ${VM_USER}@${task.vm_name}:/home/${VM_USER}/workspace ${mountPoint}`;
+
+	try {
+		await navigator.clipboard.writeText(sshfsCommand);
+		showCopiedModal = true;
+		setTimeout(() => {
+			showCopiedModal = false;
+		}, 3000); // Hide after 3 seconds
+	} catch (err) {
+		alert('Failed to copy to clipboard');
+	}
+}
+
+const connectionStatusColors: Record<string, string> = {
+	connecting: 'bg-yellow-100 text-yellow-700 border-yellow-300',
+	connected: 'bg-green-100 text-green-700 border-green-300',
+	disconnected: 'bg-red-100 text-red-700 border-red-300',
+	reconnecting: 'bg-orange-100 text-orange-700 border-orange-300',
+};
+
+onMount(async () => {
+	await initAuth0();
+	await fetchTask();
+	// Poll for status updates
+	pollInterval = setInterval(fetchTask, 5000);
+});
+
+onDestroy(() => {
+	if (pollInterval) clearInterval(pollInterval);
+});
 </script>
 
 <div class="min-h-screen bg-reindeer-cream">
