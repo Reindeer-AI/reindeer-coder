@@ -1,8 +1,8 @@
-# Dockerfile for Vibe Coding
+# Dockerfile for Reindeer Coder
 # Multi-stage build for minimal production image
 
 # Build stage
-FROM node:20-bookworm AS builder
+FROM oven/bun:1 AS builder
 WORKDIR /app
 
 # Build arguments for Auth0 configuration (needed at build time for Vite)
@@ -25,20 +25,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency manifests (better layer caching)
-COPY app/package.json app/package-lock.json* ./
+# Copy monorepo dependency manifests (better layer caching)
+COPY package.json bun.lock ./
+COPY app/package.json ./app/
 
 # Install ALL dependencies (needed for build)
-RUN npm ci
+RUN bun install --frozen-lockfile
 
-# Copy source code
-COPY app ./
+# Copy app source code
+COPY app ./app
 
 # Build the application
-RUN npm run build
+WORKDIR /app/app
+RUN bun run build
+WORKDIR /app
 
 # Production stage
-FROM node:20-bookworm-slim
+FROM oven/bun:1-slim
 WORKDIR /app
 
 # Install runtime dependencies for node-pty, gcloud SDK, and SSH
@@ -58,15 +61,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get update && apt-get install -y --no-install-recommends google-cloud-cli \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency manifests
-COPY app/package.json app/package-lock.json* ./
+# Copy monorepo dependency manifests
+COPY package.json bun.lock ./
+COPY app/package.json ./app/
 
 # Install ONLY production dependencies
-RUN npm ci --omit=dev
+RUN bun install --frozen-lockfile --production
 
 # Copy built artifacts from builder
-COPY --from=builder /app/build ./build
-COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/app/build ./build
+COPY --from=builder /app/app/package.json ./package.json
 
 # Copy database adapter files (needed for runtime)
 COPY app/src/lib/server/db ./src/lib/server/db
@@ -79,4 +83,4 @@ ENV NODE_ENV=production \
 EXPOSE 8080
 
 # Run the application
-CMD ["node", "build/index.js"]
+CMD ["bun", "run", "build/index.js"]
