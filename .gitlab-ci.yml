@@ -1,0 +1,24 @@
+# GitLab CI/CD Pipeline Configuration for Reindeer Coder
+# Uses hierarchical trigger-based architecture with sub-pipelines
+
+stages:
+  - triggers
+
+# Build Pipeline - Docker image build validation
+build-pipeline:
+  stage: triggers
+  trigger:
+    include: ci/pipelines/build.yaml
+    strategy: depend
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'push' && $CI_COMMIT_BRANCH !~ /(dev|main)/
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+# Deployment Pipeline - Deployment to Cloud Run
+deploy-pipeline:
+  stage: triggers
+  trigger:
+    include: ci/pipelines/deploy.yaml
+    strategy: depend
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'push' && $CI_COMMIT_BRANCH =~ /(dev|main)/

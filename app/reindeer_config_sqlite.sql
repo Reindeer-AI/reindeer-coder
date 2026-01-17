@@ -1,0 +1,139 @@
+-- ============================================================================
+-- SQLite Version
+-- ============================================================================
+
+-- Create config table (if not exists)
+CREATE TABLE IF NOT EXISTS config (
+	key TEXT PRIMARY KEY,
+	value TEXT NOT NULL,
+	description TEXT,
+	is_secret INTEGER NOT NULL DEFAULT 0,
+	category TEXT,
+	created_at TEXT NOT NULL DEFAULT (datetime('now')),
+	updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Insert/Update Reindeer-specific configuration
+-- Use INSERT OR REPLACE to update if exists, insert if not
+
+-- Repositories Configuration
+INSERT OR REPLACE INTO config (key, value, description, is_secret, category, created_at, updated_at)
+VALUES ('repositories.list', '[{"id":"experimental","name":"reindeerai/experimental","url":"https://gitlab.com/reindeerai/experimental.git","baseBranch":"main","allowManual":true},{"id":"workflows","name":"reindeerai/workflows","url":"https://gitlab.com/reindeerai/workflows.git","baseBranch":"dev","allowManual":true},{"id":"app","name":"reindeerai/app","url":"https://gitlab.com/reindeerai/app.git","baseBranch":"staging","allowManual":true},{"id":"reindeer-ts","name":"reindeerai/reindeer-ts","url":"https://gitlab.com/reindeerai/reindeer-ts.git","baseBranch":"dev","allowManual":true},{"id":"cloud-infrastructure","name":"reindeerai/cloud-infrastructure","url":"https://gitlab.com/reindeerai/cloud-infrastructure.git","baseBranch":"main","allowManual":false}]', 'List of pre-configured repositories', 0, 'Repositories',
+	COALESCE((SELECT created_at FROM config WHERE key = 'repositories.list'), datetime('now')),
+	datetime('now'));
+
+-- UI Configuration (Reindeer branding)
+INSERT OR REPLACE INTO config (key, value, description, is_secret, category, created_at, updated_at)
+VALUES ('ui.brand_name', 'Reindeer Code', 'Application brand name shown in the UI', 0, 'UI',
+	COALESCE((SELECT created_at FROM config WHERE key = 'ui.brand_name'), datetime('now')),
+	datetime('now'));
+
+INSERT OR REPLACE INTO config (key, value, description, is_secret, category, created_at, updated_at)
+VALUES ('ui.logo_path', '/reindeer-logo-bot.png', 'Path to the application logo', 0, 'UI',
+	COALESCE((SELECT created_at FROM config WHERE key = 'ui.logo_path'), datetime('now')),
+	datetime('now'));
+
+INSERT OR REPLACE INTO config (key, value, description, is_secret, category, created_at, updated_at)
+VALUES ('ui.primary_color', '#004238', 'Primary brand color (hex)', 0, 'UI',
+	COALESCE((SELECT created_at FROM config WHERE key = 'ui.primary_color'), datetime('now')),
+	datetime('now'));
+
+INSERT OR REPLACE INTO config (key, value, description, is_secret, category, created_at, updated_at)
+VALUES ('ui.primary_color_dark', '#003329', 'Dark variant of primary brand color', 0, 'UI',
+	COALESCE((SELECT created_at FROM config WHERE key = 'ui.primary_color_dark'), datetime('now')),
+	datetime('now'));
+
+INSERT OR REPLACE INTO config (key, value, description, is_secret, category, created_at, updated_at)
+VALUES ('ui.primary_color_light', '#00594d', 'Light variant of primary brand color', 0, 'UI',
+	COALESCE((SELECT created_at FROM config WHERE key = 'ui.primary_color_light'), datetime('now')),
+	datetime('now'));
+
+INSERT OR REPLACE INTO config (key, value, description, is_secret, category, created_at, updated_at)
+VALUES ('ui.background_color', '#f5f3ef', 'Background color (hex)', 0, 'UI',
+	COALESCE((SELECT created_at FROM config WHERE key = 'ui.background_color'), datetime('now')),
+	datetime('now'));
+
+-- Git Configuration (Reindeer-specific)
+INSERT OR REPLACE INTO config (key, value, description, is_secret, category, created_at, updated_at)
+VALUES ('git.base_url', 'https://gitlab.com', 'Git repository base URL', 0, 'Git',
+	COALESCE((SELECT created_at FROM config WHERE key = 'git.base_url'), datetime('now')),
+	datetime('now'));
+
+INSERT OR REPLACE INTO config (key, value, description, is_secret, category, created_at, updated_at)
+VALUES ('git.org', 'reindeerai', 'Git organization/group name', 0, 'Git',
+	COALESCE((SELECT created_at FROM config WHERE key = 'git.org'), datetime('now')),
+	datetime('now'));
+
+INSERT OR REPLACE INTO config (key, value, description, is_secret, category, created_at, updated_at)
+VALUES ('git.user', 'oauth2', 'Git user for authentication', 0, 'Git',
+	COALESCE((SELECT created_at FROM config WHERE key = 'git.user'), datetime('now')),
+	datetime('now'));
+
+INSERT OR REPLACE INTO config (key, value, description, is_secret, category, created_at, updated_at)
+VALUES ('git.default_base_branch', 'main', 'Default base branch for new tasks', 0, 'Git',
+	COALESCE((SELECT created_at FROM config WHERE key = 'git.default_base_branch'), datetime('now')),
+	datetime('now'));
+
+INSERT OR REPLACE INTO config (key, value, description, is_secret, category, created_at, updated_at)
+VALUES ('git.branch_prefix', 'vibe-coding', 'Prefix for generated branch names', 0, 'Git',
+	COALESCE((SELECT created_at FROM config WHERE key = 'git.branch_prefix'), datetime('now')),
+	datetime('now'));
+
+-- VM Configuration
+INSERT OR REPLACE INTO config (key, value, description, is_secret, category, created_at, updated_at)
+VALUES ('vm.user', 'reindeer-vibe', 'VM user account name', 0, 'VM',
+	COALESCE((SELECT created_at FROM config WHERE key = 'vm.user'), datetime('now')),
+	datetime('now'));
+
+INSERT OR REPLACE INTO config (key, value, description, is_secret, category, created_at, updated_at)
+VALUES ('vm.machine_type', 'e2-standard-4', 'GCP VM machine type', 0, 'VM',
+	COALESCE((SELECT created_at FROM config WHERE key = 'vm.machine_type'), datetime('now')),
+	datetime('now'));
+
+INSERT OR REPLACE INTO config (key, value, description, is_secret, category, created_at, updated_at)
+VALUES ('vm.image_family', 'ubuntu-2204-lts', 'VM image family', 0, 'VM',
+	COALESCE((SELECT created_at FROM config WHERE key = 'vm.image_family'), datetime('now')),
+	datetime('now'));
+
+INSERT OR REPLACE INTO config (key, value, description, is_secret, category, created_at, updated_at)
+VALUES ('vm.image_project', 'ubuntu-os-cloud', 'VM image project', 0, 'VM',
+	COALESCE((SELECT created_at FROM config WHERE key = 'vm.image_project'), datetime('now')),
+	datetime('now'));
+
+-- Agent Configuration
+INSERT OR REPLACE INTO config (key, value, description, is_secret, category, created_at, updated_at)
+VALUES ('agent.default_cli', 'claude-code', 'Default coding CLI (claude-code, gemini, codex)', 0, 'Agent',
+	COALESCE((SELECT created_at FROM config WHERE key = 'agent.default_cli'), datetime('now')),
+	datetime('now'));
+
+INSERT OR REPLACE INTO config (key, value, description, is_secret, category, created_at, updated_at)
+VALUES ('agent.default_system_prompt', 'IMPORTANT INSTRUCTIONS:
+1. If the task description already contains an implementation plan, do NOT plan again. Use the existing plan and proceed directly to implementation.
+2. If you need to create a plan, do NOT ask the user to approve it. Create the plan and immediately begin implementation.
+3. Make best-effort decisions independently. Only ask for human input if absolutely critical (e.g., security implications, data loss risk, or when multiple approaches have significant trade-offs).
+4. When you complete the implementation, ALWAYS create a merge request with your changes. Do not wait for the user to request this.
+5. Be autonomous and proactive in your implementation approach.
+6. If you are building a web application (node / Svelte), run the server locally in development mode. There should be a background task with the web server running on http://localhost:5173
+7. Environment setup: If there''s a .env.example file, create .env from it (cp .env.example .env) and ask the user if any additional environment variables need to be configured', 'Default system prompt for agents', 0, 'Agent',
+	COALESCE((SELECT created_at FROM config WHERE key = 'agent.default_system_prompt'), datetime('now')),
+	datetime('now'));
+
+-- Authentication Configuration
+INSERT OR REPLACE INTO config (key, value, description, is_secret, category, created_at, updated_at)
+VALUES ('auth.admin_permission', 'reindeer.admin', 'Permission string for admin users', 0, 'Authentication',
+	COALESCE((SELECT created_at FROM config WHERE key = 'auth.admin_permission'), datetime('now')),
+	datetime('now'));
+
+-- Email Configuration
+INSERT OR REPLACE INTO config (key, value, description, is_secret, category, created_at, updated_at)
+VALUES ('email.domain', 'reindeer.ai', 'Email domain for generated email addresses', 0, 'Email',
+	COALESCE((SELECT created_at FROM config WHERE key = 'email.domain'), datetime('now')),
+	datetime('now'));
+
+INSERT OR REPLACE INTO config (key, value, description, is_secret, category, created_at, updated_at)
+VALUES ('email.fallback_address', 'agent@reindeer.ai', 'Fallback email address for automated actions', 0, 'Email',
+	COALESCE((SELECT created_at FROM config WHERE key = 'email.fallback_address'), datetime('now')),
+	datetime('now'));
+
+-- Verify the configuration
+SELECT category, key, value, is_secret FROM config ORDER BY category, key;

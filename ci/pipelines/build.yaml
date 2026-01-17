@@ -1,0 +1,51 @@
+# Build pipeline for Reindeer Coder (SvelteKit)
+# Builds Docker image for deployment validation
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "parent_pipeline"
+    - if: $CI_MERGE_REQUEST_ID
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+
+variables:
+  IMAGE_PROJECT: "reindeer-backend"
+  REGISTRY: "us-central1-docker.pkg.dev/${IMAGE_PROJECT}/containers"
+  IMAGE_NAME: "reindeer-coder"
+
+stages:
+  - build
+
+build:
+  stage: build
+  identity: google_cloud
+  image: docker:28.0.4
+  services:
+    - docker:28.0.4-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_BUILDKIT: "1"
+    IMAGE: "${REGISTRY}/${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}"
+  before_script:
+    - apk add --no-cache curl tar jq bash wget
+    - ci/scripts/configure_docker_buildx_context.sh
+    - ci/scripts/configure_docker_identity.sh "$GOOGLE_APPLICATION_CREDENTIALS" "gitlab-ci@reindeer-backend.iam.gserviceaccount.com"
+  script:
+    - |
+      echo "Building Reindeer Coder image: ${IMAGE}"
+
+      docker buildx build \
+        --file ci/config/Dockerfile \
+        --platform linux/amd64 \
+        --build-arg VITE_AUTH0_DOMAIN=dev-0d0uyl2iqc17144b.us.auth0.com \
+        --build-arg VITE_AUTH0_CLIENT_ID=i6QxH7zvtkkm5pD1iCS4mcIavVXhuOiZ \
+        --build-arg VITE_AUTH0_AUDIENCE=https://vibe.reindeerlabs.ai \
+        --build-arg VITE_AUTH0_ORG_ID=org_9WU9bq88J0jAPjmM \
+        --tag "${IMAGE}" \
+        --tag "${REGISTRY}/${IMAGE_NAME}:latest" \
+        --cache-from type=registry,ref=${REGISTRY}/${IMAGE_NAME}_cache \
+        --cache-to type=registry,ref=${REGISTRY}/${IMAGE_NAME}_cache,mode=max \
+        --push \
+        .

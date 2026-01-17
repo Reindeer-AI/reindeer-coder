@@ -1,0 +1,2 @@
+# Merge strategy for database index
+vibe-coding/src/lib/server/db/index.ts merge=union

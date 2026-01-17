@@ -1,0 +1,57 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^(bun.lock|.*\.svg)$
+      - id: end-of-file-fixer
+        exclude: ^(bun.lock|.*\.svg)$
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-json
+        exclude: ^(.vscode/.*\.json)$
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: detect-private-key
+        exclude: ^(.*\.test\.ts|.*\.spec\.ts)
+
+  - repo: local
+    hooks:
+      - id: typescript-check-app
+        name: TypeScript check (app)
+        entry: bash -c 'cd app && bunx svelte-kit sync && bunx svelte-check --tsconfig ./tsconfig.json'
+        language: system
+        types_or: [ts, tsx]
+        pass_filenames: false
+        verbose: true
+        stages: [pre-commit, pre-push, manual]
+
+      - id: biome-check
+        name: Biome lint and format
+        entry: bun run lint:fix
+        language: system
+        types_or: [javascript, jsx, json, ts, tsx, svelte]
+        pass_filenames: false
+        verbose: true
+        stages: [pre-commit, pre-push, manual]
+
+      - id: bun-lockfile-check
+        name: Bun lockfile validation
+        entry: bun install --frozen-lockfile
+        language: system
+        pass_filenames: false
+        files: ^(package\.json|bun\.lock|app/package\.json|vscode-extension/package\.json)$
+        stages: [pre-commit, manual]
+
+  - repo: https://github.com/AleksaC/hadolint-py
+    rev: v2.14.0
+    hooks:
+      - id: hadolint
+        name: Lint Dockerfiles
+        files: Dockerfile
+        types: [file]
+        stages: [pre-commit, manual]

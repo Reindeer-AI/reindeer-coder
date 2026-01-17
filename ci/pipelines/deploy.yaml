@@ -1,0 +1,77 @@
+# Deployment pipeline for Reindeer Coder
+# Builds and deploys Reindeer Coder to Cloud Run in reindeer-vibe project
+
+stages:
+  - build
+  - deploy
+
+variables:
+  IMAGE_PROJECT: "reindeer-backend"
+  IMAGE_REGION: "us-central1"
+  IMAGE_NAME: "${IMAGE_REGION}-docker.pkg.dev/${IMAGE_PROJECT}/containers/reindeer-coder"
+  DEPLOY_PROJECT: "reindeer-vibe"
+  DEPLOY_REGION: "us-central1"
+  SERVICE_NAME: "reindeer-coder"
+
+build:
+  stage: build
+  identity: google_cloud
+  image: docker:28.0.4
+  services:
+    - docker:28.0.4-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_BUILDKIT: "1"
+    IMAGE: "${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}"
+  before_script:
+    - apk add --no-cache curl tar jq bash wget
+    - ci/scripts/configure_docker_buildx_context.sh
+    - ci/scripts/configure_docker_identity.sh "$GOOGLE_APPLICATION_CREDENTIALS" "gitlab-ci@reindeer-backend.iam.gserviceaccount.com"
+  script:
+    - |
+      echo "Building Reindeer Coder image: ${IMAGE}"
+
+      docker buildx build \
+        --file ci/config/Dockerfile \
+        --platform linux/amd64 \
+        --build-arg VITE_AUTH0_DOMAIN=dev-0d0uyl2iqc17144b.us.auth0.com \
+        --build-arg VITE_AUTH0_CLIENT_ID=i6QxH7zvtkkm5pD1iCS4mcIavVXhuOiZ \
+        --build-arg VITE_AUTH0_AUDIENCE=https://vibe.reindeerlabs.ai \
+        --build-arg VITE_AUTH0_ORG_ID=org_9WU9bq88J0jAPjmM \
+        --tag "${IMAGE}" \
+        --tag "${IMAGE_NAME}:latest" \
+        --cache-from type=registry,ref=${IMAGE_NAME}_cache \
+        --cache-to type=registry,ref=${IMAGE_NAME}_cache,mode=max \
+        --push \
+        .
+
+deploy:
+  stage: deploy
+  identity: google_cloud
+  image: google/cloud-sdk:latest
+  needs:
+    - build
+  rules:
+    - if: $CI_COMMIT_BRANCH == "dev"
+    - if: $CI_COMMIT_BRANCH == "main"
+  script:
+    - |
+      echo "Deploying Reindeer Coder to ${DEPLOY_PROJECT}"
+
+      gcloud run deploy ${SERVICE_NAME} \
+        --project=${DEPLOY_PROJECT} \
+        --image=${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA} \
+        --region=${DEPLOY_REGION} \
+        --platform=managed \
+        --allow-unauthenticated \
+        --add-cloudsql-instances=reindeer-vibe:us-central1:reindeer-apps \
+        --set-env-vars="NODE_ENV=production,APP_URL=https://vibe.reindeerlabs.ai,DB_TYPE=postgres,DATABASE_URL=/cloudsql/reindeer-vibe:us-central1:reindeer-apps,DB_NAME=vibe_coding,DB_USER=reindeer-coder@reindeer-vibe.iam,GCP_PROJECT_ID=reindeer-vibe,GCP_ZONE=us-central1-a,GCP_NETWORK=default,AUTH0_DOMAIN=dev-0d0uyl2iqc17144b.us.auth0.com,AUTH0_AUDIENCE=https://vibe.reindeerlabs.ai,GCP_VM_SERVICE_ACCOUNT=527751278708-compute@developer.gserviceaccount.com,VM_IMAGE_FAMILY=ubuntu-2204-lts,VM_IMAGE_PROJECT=ubuntu-os-cloud,VM_MACHINE_TYPE=e2-standard-4,VM_USER=reindeer-vibe,GIT_BASE_URL=https://gitlab.com,GIT_ORG=reindeerai,GIT_USER=oauth2,GITLAB_API_URL=https://gitlab.com/api/v4,EMAIL_DOMAIN=reindeer.ai,ANTHROPIC_API_KEY_SECRET=projects/568786328831/secrets/vibe-coding-anthropic-api-key/versions/latest,OPENAI_API_KEY_SECRET=projects/568786328831/secrets/vibe-coding-openai-api-key/versions/latest,GITLAB_TOKEN_SECRET=projects/568786328831/secrets/reindeer-gitlab-api-token/versions/latest,LINEAR_API_KEY_SECRET=projects/568786328831/secrets/vibe-coding-linear-api-key/versions/latest,SECRET_IMPERSONATE_SA=reindeer-coder@reindeer-vibe.iam.gserviceaccount.com" \
+        --service-account=reindeer-coder@${DEPLOY_PROJECT}.iam.gserviceaccount.com \
+        --memory=1Gi \
+        --cpu=2 \
+        --max-instances=10 \
+        --timeout=300s \
+        --concurrency=80
+
+      echo "Deployment complete!"

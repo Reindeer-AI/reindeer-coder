@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+	--background: #0f0a1e;
+	--foreground: #f8fafc;
+}
+
+body {
+	background-color: var(--background);
+	color: var(--foreground);
+	font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Terminal styling */
+.xterm {
+	padding: 8px;
+}
+
+.xterm-viewport::-webkit-scrollbar {
+	width: 8px;
+}
+
+.xterm-viewport::-webkit-scrollbar-track {
+	background: #1e1b4b;
+}
+
+.xterm-viewport::-webkit-scrollbar-thumb {
+	background: #7c3aed;
+	border-radius: 4px;
+}
