@@ -1,8 +1,8 @@
 # Dockerfile for Reindeer Coder
 # Multi-stage build for minimal production image
 
-# Build stage
-FROM oven/bun:1 AS builder
+# Build stage - use Node for better native module support
+FROM node:20-bookworm AS builder
 WORKDIR /app
 
 # Build arguments for Auth0 configuration (needed at build time for Vite)
@@ -16,6 +16,10 @@ ENV VITE_AUTH0_DOMAIN=${VITE_AUTH0_DOMAIN}
 ENV VITE_AUTH0_CLIENT_ID=${VITE_AUTH0_CLIENT_ID}
 ENV VITE_AUTH0_AUDIENCE=${VITE_AUTH0_AUDIENCE}
 ENV VITE_AUTH0_ORG_ID=${VITE_AUTH0_ORG_ID}
+
+# Install bun
+# hadolint ignore=DL3016
+RUN npm install -g bun
 
 # Install build dependencies for node-pty (requires Python and build tools)
 # hadolint ignore=DL3008
@@ -42,8 +46,12 @@ RUN bun run build
 WORKDIR /app
 
 # Production stage
-FROM oven/bun:1-slim
+FROM node:20-bookworm-slim
 WORKDIR /app
+
+# Install bun
+# hadolint ignore=DL3016
+RUN npm install -g bun
 
 # Install runtime dependencies for node-pty, gcloud SDK, and SSH
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
