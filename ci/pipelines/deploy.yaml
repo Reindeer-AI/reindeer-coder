@@ -2,8 +2,8 @@
 # Builds and deploys Reindeer Coder to Cloud Run in reindeer-vibe project
 
 stages:
-  - build
-  - deploy
+  - build-reindeer-coder
+  - deploy-reindeer-coder
 
 variables:
   IMAGE_PROJECT: "reindeer-backend"
@@ -13,8 +13,8 @@ variables:
   DEPLOY_REGION: "us-central1"
   SERVICE_NAME: "reindeer-coder"
 
-build:
-  stage: build
+build-reindeer-coder:
+  stage: build-reindeer-coder
   identity: google_cloud
   image: docker:28.0.4
   services:
@@ -46,15 +46,12 @@ build:
         --push \
         .
 
-deploy:
-  stage: deploy
+deploy-reindeer-coder:
+  stage: deploy-reindeer-coder
   identity: google_cloud
   image: google/cloud-sdk:latest
   needs:
-    - build
-  rules:
-    - if: $CI_COMMIT_BRANCH == "dev"
-    - if: $CI_COMMIT_BRANCH == "main"
+    - build-reindeer-coder
   script:
     - |
       echo "Deploying Reindeer Coder to ${DEPLOY_PROJECT}"

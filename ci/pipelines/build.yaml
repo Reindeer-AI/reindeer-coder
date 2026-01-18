@@ -17,7 +17,7 @@ variables:
 stages:
   - build
 
-build:
+build-reindeer-coder:
   stage: build
   identity: google_cloud
   image: docker:28.0.4
