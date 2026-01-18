@@ -1,6 +1,6 @@
 import type { Handle } from '@sveltejs/kit';
-import { env } from '$env/dynamic/private';
 import { initializeDefaultConfig } from './lib/server/config-service';
+import { getLinearApiKey } from './lib/server/secrets';
 import { LinearAgentMonitor } from './lib/server/tasks/linear-agent-monitor';
 
 // Initialize default configuration
@@ -13,15 +13,22 @@ initializeDefaultConfig().catch((error) => {
 let monitor: LinearAgentMonitor | null = null;
 
 // Start the Linear agent monitor when the server starts
-if (env.LINEAR_API_KEY) {
-	console.log('[Server] Starting Linear Agent Monitor...');
-	monitor = new LinearAgentMonitor();
-	monitor.start().catch((error) => {
-		console.error('[Server] Fatal error in Linear Agent Monitor:', error);
-	});
-} else {
-	console.log('[Server] Linear Agent Monitor disabled (missing LINEAR_API_KEY)');
+async function startLinearMonitor() {
+	try {
+		const apiKey = await getLinearApiKey();
+		if (apiKey) {
+			console.log('[Server] Starting Linear Agent Monitor...');
+			monitor = new LinearAgentMonitor();
+			await monitor.start();
+		}
+	} catch (error) {
+		console.log('[Server] Linear Agent Monitor disabled (no Linear API key configured)');
+	}
 }
+
+startLinearMonitor().catch((error) => {
+	console.error('[Server] Fatal error starting Linear Agent Monitor:', error);
+});
 
 // Graceful shutdown
 if (typeof process !== 'undefined') {
