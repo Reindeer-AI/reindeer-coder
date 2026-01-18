@@ -21,7 +21,7 @@ async function startLinearMonitor() {
 			monitor = new LinearAgentMonitor();
 			await monitor.start();
 		}
-	} catch (error) {
+	} catch (_error) {
 		console.log('[Server] Linear Agent Monitor disabled (no Linear API key configured)');
 	}
 }
