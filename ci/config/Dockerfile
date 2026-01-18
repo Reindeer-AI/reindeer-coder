@@ -28,6 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy monorepo dependency manifests (better layer caching)
 COPY package.json bun.lock ./
 COPY app/package.json ./app/
+COPY vscode-extension/package.json ./vscode-extension/
 
 # Install ALL dependencies (needed for build)
 RUN bun install --frozen-lockfile
@@ -64,6 +65,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy monorepo dependency manifests
 COPY package.json bun.lock ./
 COPY app/package.json ./app/
+COPY vscode-extension/package.json ./vscode-extension/
 
 # Install ONLY production dependencies
 RUN bun install --frozen-lockfile --production
