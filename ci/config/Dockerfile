@@ -78,12 +78,11 @@ COPY vscode-extension/package.json ./vscode-extension/
 # Install ONLY production dependencies
 RUN bun install --frozen-lockfile --production
 
-# Copy built artifacts from builder
-COPY --from=builder /app/app/build ./build
-COPY --from=builder /app/app/package.json ./package.json
+# Copy built artifacts from builder into the app workspace
+COPY --from=builder /app/app/build ./app/build
 
 # Copy database adapter files (needed for runtime)
-COPY app/src/lib/server/db ./src/lib/server/db
+COPY app/src/lib/server/db ./app/src/lib/server/db
 
 # Set environment variables
 ENV NODE_ENV=production \
@@ -92,5 +91,6 @@ ENV NODE_ENV=production \
 # Expose port
 EXPOSE 8080
 
-# Run the application
+# Run the application from the app workspace
+WORKDIR /app/app
 CMD ["bun", "run", "build/index.js"]
