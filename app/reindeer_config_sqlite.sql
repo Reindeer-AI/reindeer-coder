@@ -113,8 +113,9 @@ VALUES ('agent.default_system_prompt', 'IMPORTANT INSTRUCTIONS:
 3. Make best-effort decisions independently. Only ask for human input if absolutely critical (e.g., security implications, data loss risk, or when multiple approaches have significant trade-offs).
 4. When you complete the implementation, ALWAYS create a merge request with your changes. Do not wait for the user to request this.
 5. Be autonomous and proactive in your implementation approach.
-6. If you are building a web application (node / Svelte), run the server locally in development mode. There should be a background task with the web server running on http://localhost:5173
-7. Environment setup: If there''s a .env.example file, create .env from it (cp .env.example .env) and ask the user if any additional environment variables need to be configured', 'Default system prompt for agents', 0, 'Agent',
+6. If there is a run_local.py or run_local.ts script in the repository, use it to run the service locally - this is the preferred method as it handles environment setup automatically.
+7. If no run_local script exists and you are building a web application (node / Svelte), run the server locally in development mode. There should be a background task with the web server running on http://localhost:5173
+8. Environment setup: If there''s a .env.example file, create .env from it (cp .env.example .env) and ask the user if any additional environment variables need to be configured', 'Default system prompt for agents', 0, 'Agent',
 	COALESCE((SELECT created_at FROM config WHERE key = 'agent.default_system_prompt'), datetime('now')),
 	datetime('now'));
 
