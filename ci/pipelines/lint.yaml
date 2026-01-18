@@ -16,8 +16,8 @@ lint:
   stage: lint
   image: python:3.12-slim
   before_script:
-    # Install system dependencies
-    - apt-get update && apt-get install -y git curl unzip
+    # Install system dependencies (including build tools for native modules)
+    - apt-get update && apt-get install -y git curl unzip make g++ python3
     # Install pre-commit
     - pip install pre-commit
     # Install Bun
