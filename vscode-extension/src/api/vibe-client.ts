@@ -27,8 +27,6 @@ export interface Task {
 	vm_external_ip: string | null;
 	terminal_buffer: string | null;
 	terminal_file_path: string | null;
-	tmux_session: string | null;
-	workspace_path: string | null;
 	mr_iid: number | null;
 	mr_url: string | null;
 	project_id: string | null;
