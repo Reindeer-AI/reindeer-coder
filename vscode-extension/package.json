@@ -67,9 +67,19 @@
 			{
 				"command": "reindeerCoder.showDebugInfo",
 				"title": "Reindeer Coder: Show Debug Info"
+			},
+			{
+				"command": "reindeerCoder.switchTmuxSession",
+				"title": "Switch Tmux Session"
 			}
 		],
 		"menus": {
+			"terminal/context": [
+				{
+					"command": "reindeerCoder.switchTmuxSession",
+					"group": "navigation"
+				}
+			],
 			"view/title": [
 				{
 					"command": "reindeerCoder.refreshTasks",

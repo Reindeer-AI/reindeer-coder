@@ -20,6 +20,15 @@ interface SnapshotTerminalState {
 }
 const snapshotTerminals = new Map<string, SnapshotTerminalState>();
 
+// Track SSH terminal connections to VMs
+interface TerminalVMInfo {
+	vmName: string;
+	zone: string;
+	project: string;
+	taskId: string;
+}
+const terminalVMMap = new Map<vscode.Terminal, TerminalVMInfo>();
+
 export async function activate(context: vscode.ExtensionContext) {
 	console.log('Reindeer Coder extension is now active');
 
@@ -280,7 +289,23 @@ export async function activate(context: vscode.ExtensionContext) {
 		})
 	);
 
+	context.subscriptions.push(
+		vscode.commands.registerCommand('reindeerCoder.switchTmuxSession', async () => {
+			await switchTmuxSession();
+		})
+	);
+
 	// Note: Tree item clicks now handled by inline buttons instead of selection event
+
+	// Listen for terminal close events to clean up VM mapping
+	context.subscriptions.push(
+		vscode.window.onDidCloseTerminal((terminal) => {
+			if (terminalVMMap.has(terminal)) {
+				outputChannel.appendLine(`[CLEANUP] Removing VM mapping for closed terminal`);
+				terminalVMMap.delete(terminal);
+			}
+		})
+	);
 
 	// Clean up on deactivation
 	context.subscriptions.push({
@@ -571,6 +596,14 @@ async function connectTerminalOnly(taskId: string, gcpProject: string): Promise<
 			shellArgs: ['-c', sshCommand],
 		});
 
+		// Track terminal -> VM mapping for tmux session switching
+		terminalVMMap.set(terminal, {
+			vmName: taskDetails.vm_name,
+			zone: taskDetails.vm_zone!,
+			project: gcpProject,
+			taskId,
+		});
+
 		terminal.show();
 		outputChannel.appendLine(`Opened terminal for task ${shortId} in current window`);
 
@@ -797,6 +830,108 @@ async function showTaskDetails(taskId: string): Promise<void> {
 	} catch (error) {
 		outputChannel.appendLine(`[ERROR] Failed to show task details: ${error}`);
 		vscode.window.showErrorMessage(`Failed to show task details: ${error}`);
+	}
+}
+
+/**
+ * Switch tmux session in the active terminal
+ */
+async function switchTmuxSession(): Promise<void> {
+	try {
+		const activeTerminal = vscode.window.activeTerminal;
+		if (!activeTerminal) {
+			vscode.window.showWarningMessage('No active terminal found');
+			return;
+		}
+
+		// Check if this terminal is connected to a VM
+		const vmInfo = terminalVMMap.get(activeTerminal);
+		if (!vmInfo) {
+			vscode.window.showWarningMessage('This terminal is not connected to a Reindeer Coder VM');
+			return;
+		}
+
+		outputChannel.appendLine(`[TMUX] Fetching tmux sessions for VM ${vmInfo.vmName}...`);
+
+		// Execute tmux list-sessions on the VM
+		const listCommand = [
+			'gcloud',
+			'compute',
+			'ssh',
+			vmInfo.vmName,
+			`--project=${vmInfo.project}`,
+			`--zone=${vmInfo.zone}`,
+			'--tunnel-through-iap',
+			'--quiet',
+			'--command',
+			'"sudo -u reindeer-vibe tmux list-sessions"',
+		].join(' ');
+
+		outputChannel.appendLine(`[TMUX] Executing: ${listCommand}`);
+
+		// Execute the command
+		const { execSync } = require('node:child_process');
+		let output: string;
+		try {
+			output = execSync(listCommand, { encoding: 'utf-8', timeout: 30000 });
+		} catch (error: any) {
+			if (error.status === 1 && error.stdout) {
+				// tmux list-sessions exits with 1 if no sessions found
+				output = error.stdout;
+			} else {
+				throw error;
+			}
+		}
+
+		outputChannel.appendLine(`[TMUX] Output: ${output}`);
+
+		// Parse tmux sessions from output
+		// Format: "session-name: N windows (created DATE) [WxH] (attached)"
+		const lines = output
+			.trim()
+			.split('\n')
+			.filter((line) => line.trim());
+		if (lines.length === 0) {
+			vscode.window.showInformationMessage('No tmux sessions found on this VM');
+			return;
+		}
+
+		// Extract session names and create quick pick items
+		interface SessionItem extends vscode.QuickPickItem {
+			sessionName: string;
+		}
+
+		const sessions: SessionItem[] = lines.map((line) => {
+			const sessionName = line.split(':')[0].trim();
+			const isAttached = line.includes('(attached)');
+			return {
+				label: isAttached ? `$(check) ${sessionName}` : sessionName,
+				description: isAttached ? '(current)' : '',
+				detail: line,
+				sessionName,
+			};
+		});
+
+		// Show quick pick
+		const selected = await vscode.window.showQuickPick(sessions, {
+			placeHolder: 'Select a tmux session to switch to',
+			title: 'Switch Tmux Session',
+		});
+
+		if (!selected) {
+			return; // User cancelled
+		}
+
+		outputChannel.appendLine(`[TMUX] Switching to session: ${selected.sessionName}`);
+
+		// Send switch command to terminal
+		// Using Ctrl+C to cancel any running command, then switch-client, then Enter
+		activeTerminal.sendText(`\x03tmux switch-client -t ${selected.sessionName}\r`, false);
+
+		vscode.window.showInformationMessage(`Switched to tmux session: ${selected.sessionName}`);
+	} catch (error) {
+		outputChannel.appendLine(`[TMUX] Failed to switch session: ${error}`);
+		vscode.window.showErrorMessage(`Failed to switch tmux session: ${error}`);
 	}
 }
 
