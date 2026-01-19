@@ -120,24 +120,11 @@ export async function activate(context: vscode.ExtensionContext) {
 				`[POLLING] Refreshing terminal snapshots for ${tasks.length} running tasks...`
 			);
 
-			const fs = require('node:fs').promises;
-			const path = require('node:path');
-			const os = require('node:os');
-			const tmpDir = os.tmpdir();
-
-			// Fetch terminal snapshots and update files in the background
+			// Fetch terminal snapshots in the background to keep connections alive
 			for (const task of tasks) {
 				try {
-					const terminalBuffer = await vibeClient.getTerminalSnapshot(task.id);
+					await vibeClient.getTerminalSnapshot(task.id);
 					outputChannel.appendLine(`[POLLING] ✓ Task ${task.id.substring(0, 8)}`);
-
-					// Process and save to temp file if we got data
-					if (terminalBuffer) {
-						const processedBuffer = processTerminalBuffer(terminalBuffer);
-						const tmpFile = path.join(tmpDir, `vibe-terminal-${task.id.substring(0, 8)}.txt`);
-						await fs.writeFile(tmpFile, processedBuffer, 'utf-8');
-						outputChannel.appendLine(`[POLLING]   → Updated snapshot file`);
-					}
 				} catch (error) {
 					// Silent fail - don't show errors to user for background polling
 					outputChannel.appendLine(`[POLLING] ✗ Task ${task.id.substring(0, 8)}: ${error}`);
@@ -590,54 +577,6 @@ async function disconnectFromTask(taskId: string): Promise<void> {
 }
 
 /**
- * Process raw terminal buffer through xterm to get final rendered state
- */
-function processTerminalBuffer(rawBuffer: string): string {
-	try {
-		const { Terminal } = require('@xterm/headless');
-
-		outputChannel.appendLine(`[PROCESS] Raw buffer length: ${rawBuffer.length} chars`);
-
-		// Create a headless terminal with reasonable dimensions
-		const terminal = new Terminal({
-			cols: 200,
-			rows: 10000,
-			allowProposedApi: true,
-		});
-
-		// Write the raw buffer (this interprets all ANSI sequences)
-		terminal.write(rawBuffer);
-
-		// Extract the final rendered text line by line
-		const lines: string[] = [];
-		const buffer = terminal.buffer.active;
-
-		for (let i = 0; i < buffer.length; i++) {
-			const line = buffer.getLine(i);
-			if (line) {
-				const text = line.translateToString(true); // true = trim whitespace
-				// Only include non-empty lines or preserve structure
-				if (text.trim() || i < buffer.length - 1) {
-					lines.push(text);
-				}
-			}
-		}
-
-		terminal.dispose();
-
-		const result = lines.join('\n');
-		outputChannel.appendLine(`[PROCESS] Processed buffer length: ${result.length} chars`);
-		outputChannel.appendLine(`[PROCESS] Lines extracted: ${lines.length}`);
-
-		return result;
-	} catch (error) {
-		outputChannel.appendLine(`[ERROR] Failed to process terminal buffer: ${error}`);
-		// Fall back to raw buffer if processing fails
-		return rawBuffer;
-	}
-}
-
-/**
  * View terminal snapshot for a task
  */
 async function viewTerminalSnapshot(taskId: string): Promise<void> {
@@ -663,25 +602,41 @@ async function viewTerminalSnapshot(taskId: string): Promise<void> {
 					return;
 				}
 
-				// Process the buffer to get final rendered state
-				progress.report({ message: 'Processing terminal output...' });
-				const processedBuffer = processTerminalBuffer(terminalBuffer);
+				// Get task details for terminal name
+				const task = await vibeClient.getTask(taskId);
+				const terminalName = task.task_description
+					? `Snapshot - ${task.task_description.substring(0, 40)}${task.task_description.length > 40 ? '...' : ''}`
+					: `Snapshot - ${taskId.substring(0, 8)}`;
 
-				// Save to temporary file and open in editor
-				progress.report({ message: 'Opening snapshot...' });
-				const fs = require('node:fs').promises;
-				const path = require('node:path');
-				const os = require('node:os');
+				// Display in VSCode terminal (preserves ANSI codes for proper rendering)
+				progress.report({ message: 'Opening terminal...' });
 
-				const tmpDir = os.tmpdir();
-				const tmpFile = path.join(tmpDir, `vibe-terminal-${taskId.substring(0, 8)}.txt`);
+				const pty: vscode.Pseudoterminal = {
+					onDidWrite: new vscode.EventEmitter<string>().event,
+					onDidClose: new vscode.EventEmitter<void>().event,
+					open: function () {
+						// Write the buffer content when terminal opens
+						this._writeEmitter.fire(terminalBuffer);
+						this._writeEmitter.fire('\r\n\r\n--- End of snapshot ---\r\n');
+					},
+					close: function () {
+						this._closeEmitter.fire();
+					},
+					_writeEmitter: new vscode.EventEmitter<string>(),
+					_closeEmitter: new vscode.EventEmitter<void>(),
+				};
 
-				await fs.writeFile(tmpFile, processedBuffer, 'utf-8');
+				// Connect emitters
+				pty.onDidWrite = pty._writeEmitter.event;
+				pty.onDidClose = pty._closeEmitter.event;
 
-				const doc = await vscode.workspace.openTextDocument(tmpFile);
-				await vscode.window.showTextDocument(doc, { preview: false });
+				const terminal = vscode.window.createTerminal({
+					name: terminalName,
+					pty: pty,
+				});
 
-				outputChannel.appendLine(`[COMMAND] Terminal snapshot opened: ${tmpFile}`);
+				terminal.show();
+				outputChannel.appendLine(`[COMMAND] Terminal snapshot displayed: ${terminalName}`);
 			}
 		);
 	} catch (error) {
@@ -691,7 +646,7 @@ async function viewTerminalSnapshot(taskId: string): Promise<void> {
 }
 
 /**
- * Refresh terminal snapshot (re-fetch and update the file)
+ * Refresh terminal snapshot (re-fetch and display in new terminal)
  */
 async function refreshTerminalSnapshot(taskId: string): Promise<void> {
 	try {
@@ -716,34 +671,42 @@ async function refreshTerminalSnapshot(taskId: string): Promise<void> {
 					return;
 				}
 
-				// Process the buffer to get final rendered state
-				progress.report({ message: 'Processing terminal output...' });
-				const processedBuffer = processTerminalBuffer(terminalBuffer);
+				// Get task details for terminal name
+				const task = await vibeClient.getTask(taskId);
+				const terminalName = task.task_description
+					? `Snapshot - ${task.task_description.substring(0, 40)}${task.task_description.length > 40 ? '...' : ''} (Refreshed)`
+					: `Snapshot - ${taskId.substring(0, 8)} (Refreshed)`;
 
-				// Update the temporary file
-				progress.report({ message: 'Updating snapshot...' });
-				const fs = require('node:fs').promises;
-				const path = require('node:path');
-				const os = require('node:os');
+				// Display in VSCode terminal (preserves ANSI codes for proper rendering)
+				progress.report({ message: 'Opening terminal...' });
 
-				const tmpDir = os.tmpdir();
-				const tmpFile = path.join(tmpDir, `vibe-terminal-${taskId.substring(0, 8)}.txt`);
+				const pty: vscode.Pseudoterminal = {
+					onDidWrite: new vscode.EventEmitter<string>().event,
+					onDidClose: new vscode.EventEmitter<void>().event,
+					open: function () {
+						// Write the buffer content when terminal opens
+						this._writeEmitter.fire(terminalBuffer);
+						this._writeEmitter.fire('\r\n\r\n--- End of snapshot ---\r\n');
+					},
+					close: function () {
+						this._closeEmitter.fire();
+					},
+					_writeEmitter: new vscode.EventEmitter<string>(),
+					_closeEmitter: new vscode.EventEmitter<void>(),
+				};
 
-				await fs.writeFile(tmpFile, processedBuffer, 'utf-8');
+				// Connect emitters
+				pty.onDidWrite = pty._writeEmitter.event;
+				pty.onDidClose = pty._closeEmitter.event;
 
-				// Check if the file is already open
-				const openDoc = vscode.workspace.textDocuments.find((doc) => doc.uri.fsPath === tmpFile);
-				if (openDoc) {
-					// Reopen to refresh
-					await vscode.window.showTextDocument(openDoc, { preview: false });
-					vscode.window.showInformationMessage('Terminal snapshot refreshed');
-				} else {
-					// Open the file if not already open
-					const doc = await vscode.workspace.openTextDocument(tmpFile);
-					await vscode.window.showTextDocument(doc, { preview: false });
-				}
+				const terminal = vscode.window.createTerminal({
+					name: terminalName,
+					pty: pty,
+				});
 
-				outputChannel.appendLine(`[COMMAND] Terminal snapshot refreshed: ${tmpFile}`);
+				terminal.show();
+				outputChannel.appendLine(`[COMMAND] Terminal snapshot refreshed: ${terminalName}`);
+				vscode.window.showInformationMessage('Terminal snapshot refreshed');
 			}
 		);
 	} catch (error) {
