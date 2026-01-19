@@ -121,15 +121,22 @@ export async function activate(context: vscode.ExtensionContext) {
 			);
 
 			// Fetch terminal snapshots in the background to keep connections alive
-			for (const task of tasks) {
-				try {
-					await vibeClient.getTerminalSnapshot(task.id);
-					outputChannel.appendLine(`[POLLING] ✓ Task ${task.id.substring(0, 8)}`);
-				} catch (error) {
-					// Silent fail - don't show errors to user for background polling
-					outputChannel.appendLine(`[POLLING] ✗ Task ${task.id.substring(0, 8)}: ${error}`);
-				}
-			}
+			// Use Promise.allSettled to run all requests in parallel without waiting
+			const snapshotPromises = tasks.map((task) =>
+				vibeClient
+					.getTerminalSnapshot(task.id)
+					.then(() => {
+						outputChannel.appendLine(`[POLLING] ✓ Task ${task.id.substring(0, 8)}`);
+					})
+					.catch((error: any) => {
+						// Silent fail - don't show errors to user for background polling
+						const errorMsg = error?.message || error?.toString() || 'Unknown error';
+						outputChannel.appendLine(`[POLLING] ✗ Task ${task.id.substring(0, 8)}: ${errorMsg}`);
+					})
+			);
+
+			// Wait for all snapshot requests to complete (or timeout)
+			await Promise.allSettled(snapshotPromises);
 		} catch (error) {
 			outputChannel.appendLine(`[POLLING] Error during background poll: ${error}`);
 		}

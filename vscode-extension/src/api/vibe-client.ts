@@ -169,6 +169,7 @@ export class VibeClient {
 				retry_after?: number;
 			}>(`/api/tasks/${taskId}/terminal/snapshot`, {
 				validateStatus: (status) => status < 300 || status === 202,
+				timeout: 60000, // 60 second timeout for terminal snapshots (allows for retries)
 			});
 
 			// Handle 202 Accepted (reconnecting) - wait and retry up to 3 times
@@ -186,6 +187,7 @@ export class VibeClient {
 						status?: string;
 					}>(`/api/tasks/${taskId}/terminal/snapshot`, {
 						validateStatus: (status) => status < 300 || status === 202,
+						timeout: 60000, // 60 second timeout for retries
 					});
 
 					if (retryResponse.status === 200) {
@@ -225,7 +227,10 @@ export class VibeClient {
 			const response = await this.client.post<{ status?: string; retry_after?: number }>(
 				`/api/tasks/${taskId}/send-text`,
 				{ text },
-				{ validateStatus: (status) => status < 300 || status === 202 }
+				{
+					validateStatus: (status) => status < 300 || status === 202,
+					timeout: 60000, // 60 second timeout (allows for retries)
+				}
 			);
 
 			// Handle 202 Accepted (reconnecting) - wait and retry up to 3 times
@@ -241,7 +246,10 @@ export class VibeClient {
 					const retryResponse = await this.client.post<{ status?: string }>(
 						`/api/tasks/${taskId}/send-text`,
 						{ text },
-						{ validateStatus: (status) => status < 300 || status === 202 }
+						{
+							validateStatus: (status) => status < 300 || status === 202,
+							timeout: 60000, // 60 second timeout for retries
+						}
 					);
 
 					if (retryResponse.status === 200) {
