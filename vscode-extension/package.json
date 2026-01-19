@@ -15,117 +15,127 @@
 		"Other"
 	],
 	"activationEvents": [
-		"onView:vibeCodingTasks"
+		"onView:reindeerCoderTasks"
 	],
 	"main": "./dist/extension.js",
 	"contributes": {
 		"viewsContainers": {
 			"activitybar": [
 				{
-					"id": "vibe-coding",
-					"title": "Vibe Coding",
+					"id": "reindeer-coder",
+					"title": "Reindeer Coder",
 					"icon": "resources/icon.svg"
 				}
 			]
 		},
 		"views": {
-			"vibe-coding": [
+			"reindeer-coder": [
 				{
-					"id": "vibeCodingTasks",
+					"id": "reindeerCoderTasks",
 					"name": "Tasks"
 				}
 			]
 		},
 		"commands": [
 			{
-				"command": "vibeCoding.login",
-				"title": "Vibe Coding: Login"
+				"command": "reindeerCoder.login",
+				"title": "Reindeer Coder: Login"
 			},
 			{
-				"command": "vibeCoding.logout",
-				"title": "Vibe Coding: Logout"
+				"command": "reindeerCoder.logout",
+				"title": "Reindeer Coder: Logout"
 			},
 			{
-				"command": "vibeCoding.refreshTasks",
-				"title": "Vibe Coding: Refresh Tasks",
+				"command": "reindeerCoder.refreshTasks",
+				"title": "Reindeer Coder: Refresh Tasks",
 				"icon": "$(refresh)"
 			},
 			{
-				"command": "vibeCoding.connectTask",
+				"command": "reindeerCoder.connectTask",
 				"title": "Open Workspace",
 				"icon": "$(folder-opened)"
 			},
 			{
-				"command": "vibeCoding.connectTerminalOnly",
+				"command": "reindeerCoder.connectTerminalOnly",
 				"title": "Open Terminal",
 				"icon": "$(terminal)"
 			},
 			{
-				"command": "vibeCoding.disconnectTask",
+				"command": "reindeerCoder.disconnectTask",
 				"title": "Disconnect from Task"
 			},
 			{
-				"command": "vibeCoding.showDebugInfo",
-				"title": "Vibe Coding: Show Debug Info"
+				"command": "reindeerCoder.showDebugInfo",
+				"title": "Reindeer Coder: Show Debug Info"
+			},
+			{
+				"command": "reindeerCoder.switchTmuxSession",
+				"title": "Switch Tmux Session"
 			}
 		],
 		"menus": {
+			"terminal/context": [
+				{
+					"command": "reindeerCoder.switchTmuxSession",
+					"group": "navigation"
+				}
+			],
 			"view/title": [
 				{
-					"command": "vibeCoding.refreshTasks",
-					"when": "view == vibeCodingTasks",
+					"command": "reindeerCoder.refreshTasks",
+					"when": "view == reindeerCoderTasks",
 					"group": "navigation"
 				}
 			],
 			"view/item/context": [
 				{
-					"command": "vibeCoding.connectTask",
-					"when": "view == vibeCodingTasks && viewItem == task",
+					"command": "reindeerCoder.connectTask",
+					"when": "view == reindeerCoderTasks && viewItem == task",
 					"group": "inline"
 				},
 				{
-					"command": "vibeCoding.connectTerminalOnly",
-					"when": "view == vibeCodingTasks && viewItem == task",
+					"command": "reindeerCoder.connectTerminalOnly",
+					"when": "view == reindeerCoderTasks && viewItem == task",
 					"group": "inline"
 				}
 			]
 		},
 		"configuration": {
-			"title": "Vibe Coding",
+			"title": "Reindeer Coder",
 			"properties": {
-				"vibeCoding.apiUrl": {
+				"reindeerCoder.apiUrl": {
 					"type": "string",
 					"default": "https://vibe.reindeerlabs.ai",
-					"description": "Vibe Coding API URL"
+					"description": "Reindeer Coder API URL"
 				},
-				"vibeCoding.auth0Domain": {
+				"reindeerCoder.auth0Domain": {
 					"type": "string",
 					"default": "dev-0d0uyl2iqc17144b.us.auth0.com",
 					"description": "Auth0 domain"
 				},
-				"vibeCoding.auth0ClientId": {
+				"reindeerCoder.auth0ClientId": {
 					"type": "string",
 					"default": "i6QxH7zvtkkm5pD1iCS4mcIavVXhuOiZ",
 					"description": "Auth0 client ID (same as web app)"
 				},
-				"vibeCoding.auth0Audience": {
+				"reindeerCoder.auth0Audience": {
 					"type": "string",
 					"default": "https://vibe.reindeerlabs.ai",
 					"description": "Auth0 API audience (should match web app)"
 				},
-				"vibeCoding.auth0OrganizationId": {
+				"reindeerCoder.auth0OrganizationId": {
 					"type": "string",
 					"default": "org_9WU9bq88J0jAPjmM",
 					"description": "Auth0 organization ID (optional, leave empty if not using organizations)"
 				},
-				"vibeCoding.gcpProject": {
+				"reindeerCoder.gcpProject": {
 					"type": "string",
 					"default": "reindeer-vibe",
 					"description": "GCP project ID for compute instances"
 				},
-				"vibeCoding.mountPath": {
+				"reindeerCoder.mountPath": {
 					"type": "string",
-					"default": "~/vibe-mounts",
+					"default": "~/reindeer-coder-mounts",
 					"description": "Local path for SSHFS mounts (uses short task IDs as folder names)"
 				}
 			}

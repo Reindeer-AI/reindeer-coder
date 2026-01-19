@@ -40,6 +40,7 @@ export interface Task {
 
 export class VibeClient {
 	private client: AxiosInstance;
+	private onAuthError?: () => void;
 
 	constructor(
 		readonly apiUrl: string,
@@ -56,8 +57,50 @@ export class VibeClient {
 			if (token) {
 				config.headers.Authorization = `Bearer ${token}`;
 			}
+			console.log(`[VibeClient] → ${config.method?.toUpperCase()} ${config.url}`);
+			if (config.data) {
+				console.log(`[VibeClient] → Request body:`, config.data);
+			}
 			return config;
 		});
+
+		// Add response interceptor to handle 401 errors
+		this.client.interceptors.response.use(
+			(response) => {
+				console.log(
+					`[VibeClient] ← ${response.status} ${response.config.method?.toUpperCase()} ${response.config.url}`
+				);
+				if (response.data) {
+					console.log(`[VibeClient] ← Response data:`, response.data);
+				}
+				return response;
+			},
+			async (error) => {
+				if (error.response) {
+					console.log(
+						`[VibeClient] ← ${error.response.status} ${error.config?.method?.toUpperCase()} ${error.config?.url}`
+					);
+					console.log(`[VibeClient] ← Error response:`, error.response.data);
+
+					if (error.response.status === 401) {
+						console.log('[VibeClient] 401 Unauthorized - triggering authentication flow');
+						if (this.onAuthError) {
+							this.onAuthError();
+						}
+					}
+				} else {
+					console.log(`[VibeClient] ← Network error:`, error.message);
+				}
+				return Promise.reject(error);
+			}
+		);
+	}
+
+	/**
+	 * Set callback for authentication errors (401)
+	 */
+	setAuthErrorHandler(handler: () => void): void {
+		this.onAuthError = handler;
 	}
 
 	/**
@@ -111,5 +154,120 @@ export class VibeClient {
 		return tasks.filter((task) =>
 			['provisioning', 'initializing', 'cloning', 'running'].includes(task.status)
 		);
+	}
+
+	/**
+	 * Get the terminal snapshot for a task
+	 * Note: Background polling keeps connections alive, so this should usually succeed immediately
+	 */
+	async getTerminalSnapshot(taskId: string): Promise<string> {
+		try {
+			console.log(`[VibeClient] Fetching terminal snapshot for task ${taskId}...`);
+			const response = await this.client.get<{
+				terminal_buffer: string;
+				status?: string;
+				retry_after?: number;
+			}>(`/api/tasks/${taskId}/terminal/snapshot`, {
+				validateStatus: (status) => status < 300 || status === 202,
+				timeout: 60000, // 60 second timeout for terminal snapshots (allows for retries)
+			});
+
+			// Handle 202 Accepted (reconnecting) - wait and retry up to 3 times
+			if (response.status === 202) {
+				console.log(`[VibeClient] Terminal reconnecting for task ${taskId}, retrying...`);
+				const retryAfter = response.data.retry_after || 3;
+				const maxRetries = 3;
+
+				for (let i = 0; i < maxRetries; i++) {
+					await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
+					console.log(`[VibeClient] Retry attempt ${i + 1}/${maxRetries}...`);
+
+					const retryResponse = await this.client.get<{
+						terminal_buffer: string;
+						status?: string;
+					}>(`/api/tasks/${taskId}/terminal/snapshot`, {
+						validateStatus: (status) => status < 300 || status === 202,
+						timeout: 60000, // 60 second timeout for retries
+					});
+
+					if (retryResponse.status === 200) {
+						console.log(
+							`[VibeClient] Received terminal buffer after retry: ${retryResponse.data.terminal_buffer.length} chars`
+						);
+						return retryResponse.data.terminal_buffer;
+					}
+				}
+
+				// If still 202 after all retries, return empty or what we have
+				console.log(`[VibeClient] Still reconnecting after ${maxRetries} retries, returning empty`);
+				return response.data.terminal_buffer || '';
+			}
+
+			console.log(
+				`[VibeClient] Received terminal buffer: ${response.data.terminal_buffer.length} chars`
+			);
+			return response.data.terminal_buffer;
+		} catch (error) {
+			console.error(`[VibeClient] Failed to get terminal snapshot for task ${taskId}:`, error);
+			if ((error as any).response) {
+				console.error(`[VibeClient] Response status: ${(error as any).response.status}`);
+				console.error(`[VibeClient] Response data:`, (error as any).response.data);
+			}
+			throw new Error(`Failed to get terminal snapshot: ${error}`);
+		}
+	}
+
+	/**
+	 * Send text to a task's terminal
+	 * Note: Background polling keeps connections alive, so this should usually succeed immediately
+	 */
+	async sendTextToTerminal(taskId: string, text: string): Promise<void> {
+		try {
+			console.log(`[VibeClient] Sending text to task ${taskId}...`);
+			const response = await this.client.post<{ status?: string; retry_after?: number }>(
+				`/api/tasks/${taskId}/send-text`,
+				{ text },
+				{
+					validateStatus: (status) => status < 300 || status === 202,
+					timeout: 60000, // 60 second timeout (allows for retries)
+				}
+			);
+
+			// Handle 202 Accepted (reconnecting) - wait and retry up to 3 times
+			if (response.status === 202) {
+				console.log(`[VibeClient] Terminal reconnecting for task ${taskId}, retrying send...`);
+				const retryAfter = response.data.retry_after || 3;
+				const maxRetries = 3;
+
+				for (let i = 0; i < maxRetries; i++) {
+					await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
+					console.log(`[VibeClient] Send retry attempt ${i + 1}/${maxRetries}...`);
+
+					const retryResponse = await this.client.post<{ status?: string }>(
+						`/api/tasks/${taskId}/send-text`,
+						{ text },
+						{
+							validateStatus: (status) => status < 300 || status === 202,
+							timeout: 60000, // 60 second timeout for retries
+						}
+					);
+
+					if (retryResponse.status === 200) {
+						console.log(`[VibeClient] Text sent successfully after retry`);
+						return;
+					}
+				}
+
+				// If still 202 after all retries, throw error
+				throw new Error(
+					`Terminal still reconnecting after ${maxRetries} retries. Please try again later.`
+				);
+			}
+
+			console.log(`[VibeClient] Text sent successfully`);
+		} catch (error) {
+			console.error(`Failed to send text to task ${taskId}:`, error);
+			throw new Error(`Failed to send text: ${error}`);
+		}
 	}
 }

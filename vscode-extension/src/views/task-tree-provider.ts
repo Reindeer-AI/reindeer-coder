@@ -1,10 +1,14 @@
 import * as vscode from 'vscode';
 import type { Task } from '../api/vibe-client';
 
+export type TreeItemType = 'task' | 'details' | 'action';
+
 export class TaskTreeItem extends vscode.TreeItem {
 	constructor(
 		public readonly task: Task,
-		public readonly collapsibleState: vscode.TreeItemCollapsibleState
+		public readonly collapsibleState: vscode.TreeItemCollapsibleState,
+		public readonly itemType: TreeItemType = 'task',
+		public readonly actionId?: string
 	) {
 		// Use first line of task_description as title, truncated to 50 chars
 		// Handle null/undefined/empty descriptions gracefully
@@ -23,13 +27,15 @@ export class TaskTreeItem extends vscode.TreeItem {
 
 		super(title, collapsibleState);
 
-		this.id = task.id;
-		this.contextValue = 'task';
-		this.description = this.getStatusIcon(task.status);
-		this.tooltip = this.createTooltip();
+		this.id = `${itemType}-${task.id}${actionId ? `-${actionId}` : ''}`;
+		this.contextValue = itemType;
+		this.description = itemType === 'task' ? this.getStatusIcon(task.status) : undefined;
+		this.tooltip = itemType === 'task' ? this.createTooltip() : undefined;
 
-		// Set icon based on status
-		this.iconPath = new vscode.ThemeIcon(this.getThemeIcon(task.status));
+		// Set icon based on status for tasks
+		if (itemType === 'task') {
+			this.iconPath = new vscode.ThemeIcon(this.getThemeIcon(task.status));
+		}
 	}
 
 	private getStatusIcon(status: string): string {
@@ -171,13 +177,19 @@ export class TaskTreeProvider implements vscode.TreeDataProvider<TaskTreeItem> {
 	}
 
 	/**
-	 * Get children (tasks)
+	 * Get children (tasks or task details/actions)
 	 */
 	async getChildren(element?: TaskTreeItem): Promise<TaskTreeItem[]> {
+		// If element is provided, show its children
 		if (element) {
+			// Only tasks have children
+			if (element.itemType === 'task') {
+				return this.getTaskChildren(element.task);
+			}
 			return [];
 		}
 
+		// Root level - show tasks
 		if (!this.authenticated) {
 			return [this.createLoginPrompt()];
 		}
@@ -186,7 +198,112 @@ export class TaskTreeProvider implements vscode.TreeDataProvider<TaskTreeItem> {
 			return [this.createEmptyState()];
 		}
 
-		return this.tasks.map((task) => new TaskTreeItem(task, vscode.TreeItemCollapsibleState.None));
+		return this.tasks.map(
+			(task) => new TaskTreeItem(task, vscode.TreeItemCollapsibleState.Collapsed)
+		);
+	}
+
+	/**
+	 * Get children for a task (details and actions)
+	 */
+	private getTaskChildren(task: Task): TaskTreeItem[] {
+		const children: TaskTreeItem[] = [];
+
+		// Add details section
+		const detailsItem = new TaskTreeItem(task, vscode.TreeItemCollapsibleState.Expanded, 'details');
+		detailsItem.label = 'Details';
+		detailsItem.iconPath = new vscode.ThemeIcon('info');
+		detailsItem.description = '';
+		detailsItem.tooltip = this.createDetailsTooltip(task);
+		detailsItem.command = {
+			command: 'reindeerCoder.showTaskDetails',
+			title: 'Show Task Details',
+			arguments: [task.id],
+		};
+		children.push(detailsItem);
+
+		// Add action items
+		const viewTerminalAction = new TaskTreeItem(
+			task,
+			vscode.TreeItemCollapsibleState.None,
+			'action',
+			'view-terminal'
+		);
+		viewTerminalAction.label = 'View Terminal Snapshot';
+		viewTerminalAction.iconPath = new vscode.ThemeIcon('terminal');
+		viewTerminalAction.command = {
+			command: 'reindeerCoder.viewTerminalSnapshot',
+			title: 'View Terminal Snapshot',
+			arguments: [task.id],
+		};
+		children.push(viewTerminalAction);
+
+		const refreshTerminalAction = new TaskTreeItem(
+			task,
+			vscode.TreeItemCollapsibleState.None,
+			'action',
+			'refresh-terminal'
+		);
+		refreshTerminalAction.label = 'Refresh Terminal Snapshot';
+		refreshTerminalAction.iconPath = new vscode.ThemeIcon('refresh');
+		refreshTerminalAction.command = {
+			command: 'reindeerCoder.refreshTerminalSnapshot',
+			title: 'Refresh Terminal Snapshot',
+			arguments: [task.id],
+		};
+		children.push(refreshTerminalAction);
+
+		const sendTextAction = new TaskTreeItem(
+			task,
+			vscode.TreeItemCollapsibleState.None,
+			'action',
+			'send-text'
+		);
+		sendTextAction.label = 'Send Text to Terminal';
+		sendTextAction.iconPath = new vscode.ThemeIcon('edit');
+		sendTextAction.command = {
+			command: 'reindeerCoder.sendTextToTerminal',
+			title: 'Send Text to Terminal',
+			arguments: [task.id],
+		};
+		children.push(sendTextAction);
+
+		return children;
+	}
+
+	/**
+	 * Create detailed tooltip for task details
+	 */
+	private createDetailsTooltip(task: Task): vscode.MarkdownString {
+		const tooltip = new vscode.MarkdownString();
+		tooltip.appendMarkdown(`**Task Details**\n\n`);
+		tooltip.appendMarkdown(`**ID:** ${task.id}\n\n`);
+		tooltip.appendMarkdown(`**Status:** ${task.status}\n\n`);
+
+		if (task.repository) {
+			tooltip.appendMarkdown(`**Repository:** ${task.repository}\n\n`);
+		}
+
+		if (task.base_branch) {
+			tooltip.appendMarkdown(`**Base Branch:** ${task.base_branch}\n\n`);
+		}
+
+		if (task.feature_branch) {
+			tooltip.appendMarkdown(`**Feature Branch:** ${task.feature_branch}\n\n`);
+		}
+
+		if (task.vm_name) {
+			tooltip.appendMarkdown(`**VM:** ${task.vm_name} (${task.vm_zone})\n\n`);
+		}
+
+		if (task.mr_url) {
+			tooltip.appendMarkdown(`**Merge Request:** [!${task.mr_iid}](${task.mr_url})\n\n`);
+		}
+
+		tooltip.appendMarkdown(`**Created:** ${new Date(task.created_at).toLocaleString()}\n\n`);
+		tooltip.appendMarkdown(`**Updated:** ${new Date(task.updated_at).toLocaleString()}`);
+
+		return tooltip;
 	}
 
 	/**
@@ -221,7 +338,7 @@ export class TaskTreeProvider implements vscode.TreeDataProvider<TaskTreeItem> {
 		const item = new TaskTreeItem(dummyTask, vscode.TreeItemCollapsibleState.None);
 		item.contextValue = 'login-prompt'; // Different context value to hide buttons
 		item.command = {
-			command: 'vibeCoding.login',
+			command: 'reindeerCoder.login',
 			title: 'Login',
 		};
 		item.iconPath = new vscode.ThemeIcon('sign-in');
