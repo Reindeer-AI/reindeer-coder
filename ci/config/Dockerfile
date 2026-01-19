@@ -1,7 +1,7 @@
 # Dockerfile for Reindeer Coder
 # Multi-stage build for minimal production image
 
-# Build stage - use Node for better native module support
+# Build stage
 FROM node:20-bookworm AS builder
 WORKDIR /app
 
@@ -17,10 +17,6 @@ ENV VITE_AUTH0_CLIENT_ID=${VITE_AUTH0_CLIENT_ID}
 ENV VITE_AUTH0_AUDIENCE=${VITE_AUTH0_AUDIENCE}
 ENV VITE_AUTH0_ORG_ID=${VITE_AUTH0_ORG_ID}
 
-# Install bun
-# hadolint ignore=DL3016
-RUN npm install -g bun
-
 # Install build dependencies for node-pty (requires Python and build tools)
 # hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -29,29 +25,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy monorepo dependency manifests (better layer caching)
-COPY package.json bun.lock ./
-COPY app/package.json ./app/
-COPY vscode-extension/package.json ./vscode-extension/
+# Copy app dependency manifest
+COPY app/package.json app/package-lock.json* ./
 
 # Install ALL dependencies (needed for build)
-RUN bun install --frozen-lockfile
+RUN npm install
 
 # Copy app source code
-COPY app ./app
+COPY app ./
 
 # Build the application
-WORKDIR /app/app
-RUN bun run build
-WORKDIR /app
+RUN npm run build
 
 # Production stage
 FROM node:20-bookworm-slim
 WORKDIR /app
-
-# Install bun
-# hadolint ignore=DL3016
-RUN npm install -g bun
 
 # Install runtime dependencies for node-pty, gcloud SDK, and SSH
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -70,19 +58,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get update && apt-get install -y --no-install-recommends google-cloud-cli \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy monorepo dependency manifests
-COPY package.json bun.lock ./
-COPY app/package.json ./app/
-COPY vscode-extension/package.json ./vscode-extension/
+# Copy app dependency manifest
+COPY app/package.json app/package-lock.json* ./
 
 # Install ONLY production dependencies
-RUN bun install --frozen-lockfile --production
+RUN npm install --omit=dev
 
-# Copy built artifacts from builder into the app workspace
-COPY --from=builder /app/app/build ./app/build
+# Copy built artifacts from builder
+COPY --from=builder /app/build ./build
 
 # Copy database adapter files (needed for runtime)
-COPY app/src/lib/server/db ./app/src/lib/server/db
+COPY app/src/lib/server/db ./src/lib/server/db
 
 # Set environment variables
 ENV NODE_ENV=production \
@@ -91,6 +77,5 @@ ENV NODE_ENV=production \
 # Expose port
 EXPOSE 8080
 
-# Run the application from the app workspace
-WORKDIR /app/app
-CMD ["bun", "run", "build/index.js"]
+# Run the application
+CMD ["node", "build/index.js"]
