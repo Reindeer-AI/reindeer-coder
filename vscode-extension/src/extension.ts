@@ -738,9 +738,9 @@ async function sendTextToTerminal(taskId: string): Promise<void> {
 			`\n[COMMAND] Send text to terminal for task ${taskId.substring(0, 8)}`
 		);
 
-		// Prompt user for text to send
+		// Prompt user for command to send
 		const text = await vscode.window.showInputBox({
-			prompt: 'Enter text to send to the terminal',
+			prompt: 'Enter command to send to the terminal (will be executed with Ctrl+C prefix)',
 			placeHolder: 'e.g., ls -la',
 		});
 
@@ -758,9 +758,11 @@ async function sendTextToTerminal(taskId: string): Promise<void> {
 			},
 			async (progress) => {
 				progress.report({ message: 'Sending...' });
-				await vibeClient.sendTextToTerminal(taskId, text);
-				vscode.window.showInformationMessage(`Text sent to terminal: ${text}`);
-				outputChannel.appendLine(`[COMMAND] Text sent successfully: ${text}`);
+				// Send Ctrl+C, then the text, then carriage return
+				const textToSend = `\x03${text}\r`;
+				await vibeClient.sendTextToTerminal(taskId, textToSend);
+				vscode.window.showInformationMessage(`Command sent to terminal: ${text}`);
+				outputChannel.appendLine(`[COMMAND] Command sent successfully: ${text}`);
 			}
 		);
 	} catch (error) {
