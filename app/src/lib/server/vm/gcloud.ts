@@ -30,6 +30,7 @@ interface BunSpawnOptions {
 	cwd?: string;
 	env?: Record<string, string>;
 	terminal?: BunTerminalOptions;
+	detached?: boolean; // Run in separate process group via setsid()
 }
 
 declare const Bun: {
@@ -82,9 +83,11 @@ export function connectToVM(vmName: string, zone?: string, project?: string): Gc
 
 	// Use Bun.spawn with terminal option for proper PTY allocation
 	// This is Bun's native PTY implementation, avoiding node-pty compatibility issues
+	// detached: true runs in separate process group via setsid() to prevent SIGHUP propagation
 	const proc = Bun.spawn(cmd, {
 		cwd: process.cwd(),
 		env: process.env as Record<string, string>,
+		detached: true,
 		terminal: {
 			cols: 120,
 			rows: 40,
