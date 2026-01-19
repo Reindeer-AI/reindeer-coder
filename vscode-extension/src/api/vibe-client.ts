@@ -141,9 +141,29 @@ export class VibeClient {
 	async getTerminalSnapshot(taskId: string): Promise<string> {
 		try {
 			console.log(`[VibeClient] Fetching terminal snapshot for task ${taskId}...`);
-			const response = await this.client.get<{ terminal_buffer: string }>(
-				`/api/tasks/${taskId}/terminal/snapshot`
-			);
+			const response = await this.client.get<{
+				terminal_buffer: string;
+				status?: string;
+				retry_after?: number;
+			}>(`/api/tasks/${taskId}/terminal/snapshot`, {
+				validateStatus: (status) => status < 300 || status === 202,
+			});
+
+			// Handle 202 Accepted (reconnecting)
+			if (response.status === 202) {
+				console.log(`[VibeClient] Terminal reconnecting for task ${taskId}, retrying...`);
+				const retryAfter = response.data.retry_after || 3;
+				await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
+				// Retry once
+				const retryResponse = await this.client.get<{ terminal_buffer: string }>(
+					`/api/tasks/${taskId}/terminal/snapshot`
+				);
+				console.log(
+					`[VibeClient] Received terminal buffer after retry: ${retryResponse.data.terminal_buffer.length} chars`
+				);
+				return retryResponse.data.terminal_buffer;
+			}
+
 			console.log(
 				`[VibeClient] Received terminal buffer: ${response.data.terminal_buffer.length} chars`
 			);
@@ -164,7 +184,23 @@ export class VibeClient {
 	async sendTextToTerminal(taskId: string, text: string): Promise<void> {
 		try {
 			console.log(`[VibeClient] Sending text to task ${taskId}...`);
-			await this.client.post(`/api/tasks/${taskId}/send-text`, { text });
+			const response = await this.client.post<{ status?: string; retry_after?: number }>(
+				`/api/tasks/${taskId}/send-text`,
+				{ text },
+				{ validateStatus: (status) => status < 300 || status === 202 }
+			);
+
+			// Handle 202 Accepted (reconnecting)
+			if (response.status === 202) {
+				console.log(`[VibeClient] Terminal reconnecting for task ${taskId}, retrying send...`);
+				const retryAfter = response.data.retry_after || 3;
+				await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
+				// Retry once
+				await this.client.post(`/api/tasks/${taskId}/send-text`, { text });
+				console.log(`[VibeClient] Text sent successfully after retry`);
+				return;
+			}
+
 			console.log(`[VibeClient] Text sent successfully`);
 		} catch (error) {
 			console.error(`Failed to send text to task ${taskId}:`, error);

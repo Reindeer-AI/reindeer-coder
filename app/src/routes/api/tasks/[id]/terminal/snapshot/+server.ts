@@ -2,6 +2,7 @@ import { error, json } from '@sveltejs/kit';
 import { extractBearerToken, verifyToken } from '$lib/server/auth';
 import { configService } from '$lib/server/config-service';
 import { getTaskById } from '$lib/server/db';
+import { getActiveConnection, manualReconnect } from '$lib/server/vm/orchestrator';
 import type { RequestHandler } from './$types';
 
 // GET /api/tasks/:id/terminal/snapshot - Get terminal snapshot (non-SSE)
@@ -34,7 +35,36 @@ export const GET: RequestHandler = async ({ params, request }) => {
 
 	// getTaskById already reads from terminal file if available
 	const terminalBuffer = task.terminal_buffer || '';
-	console.log(`[snapshot] Returning ${terminalBuffer.length} chars for task ${params.id}`);
+	console.log(`[snapshot] Task ${params.id}: buffer length = ${terminalBuffer.length} chars`);
+
+	// If no terminal content and task is running, trigger reconnect to start capturing
+	if (!terminalBuffer && ['running', 'cloning'].includes(task.status) && task.vm_name) {
+		const conn = getActiveConnection(params.id);
+		if (!conn) {
+			console.log(
+				`[snapshot] No content and no connection for task ${params.id}, initiating reconnect...`
+			);
+
+			// Trigger reconnection in background
+			manualReconnect(params.id).catch((err) => {
+				console.error(`[snapshot] Reconnect failed for task ${params.id}:`, err);
+			});
+
+			// Return 202 Accepted - client should retry
+			return new Response(
+				JSON.stringify({
+					status: 'reconnecting',
+					message: 'Terminal connection is being established. Please try again in a few seconds.',
+					retry_after: 3,
+					terminal_buffer: '',
+				}),
+				{
+					status: 202,
+					headers: { 'Content-Type': 'application/json' },
+				}
+			);
+		}
+	}
 
 	return json({
 		terminal_buffer: terminalBuffer,
