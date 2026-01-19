@@ -105,7 +105,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	outputChannel.appendLine('\n[AUTH] Checking authentication status...');
 	await checkAuthAndLoadTasks();
 
-	// Start background polling to keep terminal snapshots fresh
+	// Start background polling to keep terminal snapshots fresh and update snapshot files
 	outputChannel.appendLine('\n[POLLING] Starting background terminal snapshot polling...');
 	const pollingInterval = setInterval(async () => {
 		try {
@@ -120,11 +120,24 @@ export async function activate(context: vscode.ExtensionContext) {
 				`[POLLING] Refreshing terminal snapshots for ${tasks.length} running tasks...`
 			);
 
-			// Fetch terminal snapshots in the background to keep connections alive
+			const fs = require('node:fs').promises;
+			const path = require('node:path');
+			const os = require('node:os');
+			const tmpDir = os.tmpdir();
+
+			// Fetch terminal snapshots and update files in the background
 			for (const task of tasks) {
 				try {
-					await vibeClient.getTerminalSnapshot(task.id);
+					const terminalBuffer = await vibeClient.getTerminalSnapshot(task.id);
 					outputChannel.appendLine(`[POLLING] ✓ Task ${task.id.substring(0, 8)}`);
+
+					// Process and save to temp file if we got data
+					if (terminalBuffer) {
+						const processedBuffer = processTerminalBuffer(terminalBuffer);
+						const tmpFile = path.join(tmpDir, `vibe-terminal-${task.id.substring(0, 8)}.txt`);
+						await fs.writeFile(tmpFile, processedBuffer, 'utf-8');
+						outputChannel.appendLine(`[POLLING]   → Updated snapshot file`);
+					}
 				} catch (error) {
 					// Silent fail - don't show errors to user for background polling
 					outputChannel.appendLine(`[POLLING] ✗ Task ${task.id.substring(0, 8)}: ${error}`);
@@ -537,8 +550,8 @@ async function connectTerminalOnly(taskId: string, gcpProject: string): Promise<
 
 		// Create terminal with task description as name (truncated to 40 chars)
 		const terminalName = taskDetails.task_description
-			? `Vibe: ${taskDetails.task_description.substring(0, 40)}${taskDetails.task_description.length > 40 ? '...' : ''}`
-			: `Vibe: ${shortId}`;
+			? `Terminal - ${taskDetails.task_description.substring(0, 40)}${taskDetails.task_description.length > 40 ? '...' : ''}`
+			: `Terminal - ${shortId}`;
 
 		const terminal = vscode.window.createTerminal({
 			name: terminalName,
@@ -790,22 +803,7 @@ async function showTaskDetails(taskId: string): Promise<void> {
 
 		const task = await vibeClient.getTask(taskId);
 
-		const details = [
-			`**Task Description:** ${task.task_description}`,
-			`**ID:** ${task.id.substring(0, 8)}`,
-			`**Status:** ${task.status}`,
-			`**Repository:** ${task.repository}`,
-			`**Base Branch:** ${task.base_branch}`,
-			task.feature_branch ? `**Feature Branch:** ${task.feature_branch}` : null,
-			task.mr_url ? `**MR:** ${task.mr_url}` : null,
-			task.vm_name ? `**VM:** ${task.vm_name}` : null,
-			`**Created:** ${new Date(task.created_at).toLocaleString()}`,
-			`**Updated:** ${new Date(task.updated_at).toLocaleString()}`,
-		]
-			.filter(Boolean)
-			.join('\n\n');
-
-		// Create a quick pick to show details with options
+		// Show task details with action options
 		const action = await vscode.window.showInformationMessage(
 			`Task: ${task.task_description}`,
 			'Copy ID',
