@@ -498,6 +498,10 @@ async function connectToTask(
 			throw new Error('Task does not have VM information');
 		}
 
+		if (!taskDetails.tmux_session) {
+			throw new Error('Task does not have tmux session information');
+		}
+
 		// Generate meaningful folder name
 		const folderName = generateTaskFolderName(taskDetails);
 		outputChannel.appendLine(`Using mount folder name: ${folderName}`);
@@ -532,7 +536,7 @@ async function connectToTask(
 					vmName: taskDetails.vm_name!,
 					zone: taskDetails.vm_zone!,
 					project: gcpProject,
-					tmuxSession: taskDetails.tmux_session || `coder-${taskId.substring(0, 8)}`,
+					tmuxSession: taskDetails.tmux_session,
 				});
 
 				// Open workspace in NEW window
@@ -567,8 +571,12 @@ async function connectTerminalOnly(taskId: string, gcpProject: string): Promise<
 			throw new Error('Task does not have VM information');
 		}
 
+		if (!taskDetails.tmux_session) {
+			throw new Error('Task does not have tmux session information');
+		}
+
 		const shortId = taskId.substring(0, 8);
-		const tmuxSession = taskDetails.tmux_session || `coder-${shortId}`;
+		const tmuxSession = taskDetails.tmux_session;
 
 		// Build SSH command with correct flags and sudo to reindeer-vibe user
 		const sshCommand = [
