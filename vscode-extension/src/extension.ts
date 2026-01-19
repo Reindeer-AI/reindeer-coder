@@ -105,8 +105,11 @@ export async function activate(context: vscode.ExtensionContext) {
 	outputChannel.appendLine('\n[AUTH] Checking authentication status...');
 	await checkAuthAndLoadTasks();
 
-	// Start background polling to keep terminal snapshots fresh and update snapshot files
-	outputChannel.appendLine('\n[POLLING] Starting background terminal snapshot polling...');
+	// Start background polling to keep terminal snapshots fresh
+	// Poll every 5 minutes to reduce load and avoid excessive reconnections
+	outputChannel.appendLine(
+		'\n[POLLING] Starting background terminal snapshot polling (every 5 min)...'
+	);
 	const pollingInterval = setInterval(async () => {
 		try {
 			const isAuth = await auth0Client.isAuthenticated();
@@ -116,6 +119,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
 			// Get all running tasks
 			const tasks = await vibeClient.listActiveTasks();
+			if (tasks.length === 0) {
+				return; // No running tasks, skip polling
+			}
+
 			outputChannel.appendLine(
 				`[POLLING] Refreshing terminal snapshots for ${tasks.length} running tasks...`
 			);
@@ -140,7 +147,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		} catch (error) {
 			outputChannel.appendLine(`[POLLING] Error during background poll: ${error}`);
 		}
-	}, 60000); // Poll every 60 seconds
+	}, 300000); // Poll every 5 minutes (300,000 ms)
 
 	// Clean up polling on deactivation
 	context.subscriptions.push({
