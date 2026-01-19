@@ -45,6 +45,8 @@ export interface Task {
 	vm_external_ip: string | null;
 	terminal_buffer: string | null;
 	terminal_file_path: string | null;
+	tmux_session: string | null;
+	workspace_path: string | null;
 	// Git MR/PR info (works with GitLab, GitHub, etc.)
 	mr_iid: number | null;
 	mr_url: string | null;
