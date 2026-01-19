@@ -249,6 +249,12 @@ export async function activate(context: vscode.ExtensionContext) {
 		})
 	);
 
+	context.subscriptions.push(
+		vscode.commands.registerCommand('vibeCoding.showTaskDetails', async (taskId: string) => {
+			await showTaskDetails(taskId);
+		})
+	);
+
 	// Note: Tree item clicks now handled by inline buttons instead of selection event
 
 	// Clean up on deactivation
@@ -529,9 +535,13 @@ async function connectTerminalOnly(taskId: string, gcpProject: string): Promise<
 			`tmux attach-session -t ${tmuxSession}`,
 		].join(' ');
 
-		// Create terminal in current window
+		// Create terminal with task description as name (truncated to 40 chars)
+		const terminalName = taskDetails.task_description
+			? `Vibe: ${taskDetails.task_description.substring(0, 40)}${taskDetails.task_description.length > 40 ? '...' : ''}`
+			: `Vibe: ${shortId}`;
+
 		const terminal = vscode.window.createTerminal({
-			name: `Vibe: ${shortId}`,
+			name: terminalName,
 			shellPath: '/bin/bash',
 			shellArgs: ['-c', sshCommand],
 		});
@@ -768,6 +778,55 @@ async function sendTextToTerminal(taskId: string): Promise<void> {
 	} catch (error) {
 		outputChannel.appendLine(`[ERROR] Failed to send text to terminal: ${error}`);
 		vscode.window.showErrorMessage(`Failed to send text to terminal: ${error}`);
+	}
+}
+
+/**
+ * Show task details in an information message
+ */
+async function showTaskDetails(taskId: string): Promise<void> {
+	try {
+		outputChannel.appendLine(`\n[COMMAND] Show task details for ${taskId.substring(0, 8)}`);
+
+		const task = await vibeClient.getTask(taskId);
+
+		const details = [
+			`**Task Description:** ${task.task_description}`,
+			`**ID:** ${task.id.substring(0, 8)}`,
+			`**Status:** ${task.status}`,
+			`**Repository:** ${task.repository}`,
+			`**Base Branch:** ${task.base_branch}`,
+			task.feature_branch ? `**Feature Branch:** ${task.feature_branch}` : null,
+			task.mr_url ? `**MR:** ${task.mr_url}` : null,
+			task.vm_name ? `**VM:** ${task.vm_name}` : null,
+			`**Created:** ${new Date(task.created_at).toLocaleString()}`,
+			`**Updated:** ${new Date(task.updated_at).toLocaleString()}`,
+		]
+			.filter(Boolean)
+			.join('\n\n');
+
+		// Create a quick pick to show details with options
+		const action = await vscode.window.showInformationMessage(
+			`Task: ${task.task_description}`,
+			'Copy ID',
+			'Copy Repository',
+			'Open MR'
+		);
+
+		if (action === 'Copy ID') {
+			await vscode.env.clipboard.writeText(task.id);
+			vscode.window.showInformationMessage('Task ID copied to clipboard');
+		} else if (action === 'Copy Repository') {
+			await vscode.env.clipboard.writeText(task.repository);
+			vscode.window.showInformationMessage('Repository URL copied to clipboard');
+		} else if (action === 'Open MR' && task.mr_url) {
+			await vscode.env.openExternal(vscode.Uri.parse(task.mr_url));
+		}
+
+		outputChannel.appendLine('[COMMAND] Task details displayed');
+	} catch (error) {
+		outputChannel.appendLine(`[ERROR] Failed to show task details: ${error}`);
+		vscode.window.showErrorMessage(`Failed to show task details: ${error}`);
 	}
 }
 

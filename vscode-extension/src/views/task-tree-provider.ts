@@ -215,6 +215,11 @@ export class TaskTreeProvider implements vscode.TreeDataProvider<TaskTreeItem> {
 		detailsItem.iconPath = new vscode.ThemeIcon('info');
 		detailsItem.description = '';
 		detailsItem.tooltip = this.createDetailsTooltip(task);
+		detailsItem.command = {
+			command: 'vibeCoding.showTaskDetails',
+			title: 'Show Task Details',
+			arguments: [task.id],
+		};
 		children.push(detailsItem);
 
 		// Add action items
