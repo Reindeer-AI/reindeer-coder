@@ -3,9 +3,9 @@ repos:
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
-        exclude: ^(bun.lock|.*\.svg)$
+        exclude: ^(package-lock\.json|.*\.svg)$
       - id: end-of-file-fixer
-        exclude: ^(bun.lock|.*\.svg)$
+        exclude: ^(package-lock\.json|.*\.svg)$
       - id: check-yaml
         args: [--allow-multiple-documents]
       - id: check-json
@@ -23,7 +23,7 @@ repos:
     hooks:
       - id: typescript-check-app
         name: TypeScript check (app)
-        entry: bash -c 'export PATH="$HOME/.bun/bin:$PATH" && cd app && bunx svelte-kit sync && bunx svelte-check --tsconfig ./tsconfig.json'
+        entry: bash -c 'cd app && npx svelte-kit sync && npx svelte-check --tsconfig ./tsconfig.json'
         language: system
         types_or: [ts, tsx]
         pass_filenames: false
@@ -32,20 +32,12 @@ repos:
 
       - id: biome-check
         name: Biome lint and format
-        entry: bash -c 'export PATH="$HOME/.bun/bin:$PATH" && bun run lint:fix'
+        entry: bash -c 'npm run lint:fix'
         language: system
         types_or: [javascript, jsx, json, ts, tsx, svelte]
         pass_filenames: false
         verbose: true
         stages: [pre-commit, pre-push, manual]
-
-      - id: bun-lockfile-check
-        name: Bun lockfile validation
-        entry: bash -c 'export PATH="$HOME/.bun/bin:$PATH" && bun install --frozen-lockfile'
-        language: system
-        pass_filenames: false
-        files: ^(package\.json|bun\.lock|app/package\.json|vscode-extension/package\.json)$
-        stages: [pre-commit, manual]
 
   - repo: https://github.com/AleksaC/hadolint-py
     rev: v2.14.0
