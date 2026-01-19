@@ -1267,8 +1267,9 @@ IMPERSONATE_FLAG=""
 if [ -n "$SECRET_IMPERSONATE_SA" ]; then
     IMPERSONATE_FLAG="--impersonate-service-account=$SECRET_IMPERSONATE_SA"
     echo "Using service account impersonation for secrets: $SECRET_IMPERSONATE_SA"
-    # Persist for later SSH sessions
-    echo "export SECRET_IMPERSONATE_SA=$SECRET_IMPERSONATE_SA" >> /etc/environment
+    # Persist for later SSH sessions - /etc/environment for system-wide and bashrc for user shell
+    echo "SECRET_IMPERSONATE_SA=$SECRET_IMPERSONATE_SA" >> /etc/environment
+    echo "export SECRET_IMPERSONATE_SA=$SECRET_IMPERSONATE_SA" >> /home/${vmUser}/.bashrc
 fi
 
 # Configure git credentials from metadata for ${vmUser} user
