@@ -270,4 +270,51 @@ export class VibeClient {
 			throw new Error(`Failed to send text: ${error}`);
 		}
 	}
+
+	/**
+	 * Fetch available repositories from config
+	 */
+	async getRepositories(): Promise<
+		Array<{ id: string; name: string; url: string; baseBranch: string; allowManual: boolean }>
+	> {
+		try {
+			console.log('[VibeClient] Fetching repositories from config...');
+			const response = await this.client.get<{ config: { value: string } }>(
+				'/api/config/repositories.list'
+			);
+
+			if (!response.data.config?.value) {
+				return [];
+			}
+
+			const repos = JSON.parse(response.data.config.value);
+			console.log(`[VibeClient] Fetched ${repos.length} repositories`);
+			return repos;
+		} catch (error) {
+			console.error('[VibeClient] Failed to fetch repositories:', error);
+			return [];
+		}
+	}
+
+	/**
+	 * Create a new task
+	 */
+	async createTask(taskData: {
+		repository: string;
+		base_branch: string;
+		task_description: string;
+		coding_cli: 'claude-code' | 'gemini' | 'codex';
+		system_prompt?: string;
+		user_email?: string;
+	}): Promise<Task> {
+		try {
+			console.log('[VibeClient] Creating new task...');
+			const response = await this.client.post<{ task: Task }>('/api/tasks', taskData);
+			console.log(`[VibeClient] Task created: ${response.data.task.id}`);
+			return response.data.task;
+		} catch (error) {
+			console.error('[VibeClient] Failed to create task:', error);
+			throw new Error(`Failed to create task: ${error}`);
+		}
+	}
 }

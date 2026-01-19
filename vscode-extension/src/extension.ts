@@ -3,6 +3,7 @@ import { type Task, VibeClient } from './api/vibe-client';
 import { Auth0Client } from './auth/auth0-client';
 import { SSHFSManager } from './connection/sshfs-manager';
 import { TerminalManager } from './connection/terminal-manager';
+import { CreateTaskPanel } from './views/create-task-panel';
 import { type TaskTreeItem, TaskTreeProvider } from './views/task-tree-provider';
 
 let auth0Client: Auth0Client;
@@ -293,6 +294,25 @@ export async function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand('reindeerCoder.switchTmuxSession', async () => {
 			await switchTmuxSession();
 		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('reindeerCoder.createNewTask', async () => {
+			outputChannel.appendLine('\n[COMMAND] Create new task command triggered');
+			CreateTaskPanel.createOrShow(context.extensionUri, auth0Client, vibeClient, async () => {
+				outputChannel.appendLine('[COMMAND] Task created, refreshing task list');
+				await loadTasks();
+			});
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+			'reindeerCoder.testFromLocalBrowser',
+			async (item: TaskTreeItem) => {
+				await testFromLocalBrowser(item.task.id, gcpProject);
+			}
+		)
 	);
 
 	// Note: Tree item clicks now handled by inline buttons instead of selection event
@@ -835,6 +855,84 @@ async function showTaskDetails(taskId: string): Promise<void> {
 	} catch (error) {
 		outputChannel.appendLine(`[ERROR] Failed to show task details: ${error}`);
 		vscode.window.showErrorMessage(`Failed to show task details: ${error}`);
+	}
+}
+
+/**
+ * Test from local browser - creates tunnel and opens VSCode simple browser
+ */
+async function testFromLocalBrowser(taskId: string, gcpProject: string): Promise<void> {
+	try {
+		outputChannel.appendLine(
+			`\n[COMMAND] Test from local browser for task ${taskId.substring(0, 8)}`
+		);
+
+		// Get task details
+		const taskDetails = await vibeClient.getTask(taskId);
+
+		if (!taskDetails.vm_name || !taskDetails.vm_zone) {
+			throw new Error('Task does not have VM information');
+		}
+
+		// Check for existing tunnel terminal
+		const existingTunnel = vscode.window.terminals.find(
+			(t) => t.name.includes('Tunnel') && t.name.includes(taskDetails.vm_name!)
+		);
+
+		if (existingTunnel) {
+			const action = await vscode.window.showWarningMessage(
+				'A tunnel terminal already exists for this VM. Do you want to close it and create a new one?',
+				'Close and Recreate',
+				'Cancel'
+			);
+
+			if (action === 'Close and Recreate') {
+				existingTunnel.dispose();
+			} else {
+				// Open browser anyway
+				await vscode.env.openExternal(vscode.Uri.parse('http://localhost:3715'));
+				return;
+			}
+		}
+
+		// Build tunnel command
+		const tunnelCommand = [
+			'gcloud',
+			'compute',
+			'ssh',
+			taskDetails.vm_name,
+			`--project=${gcpProject}`,
+			`--zone=${taskDetails.vm_zone}`,
+			'--tunnel-through-iap',
+			'--',
+			'-N -L 3715:127.0.0.1:5173',
+		].join(' ');
+
+		outputChannel.appendLine(`[COMMAND] Creating tunnel: ${tunnelCommand}`);
+
+		// Create terminal in terminal area (not editor)
+		const terminal = vscode.window.createTerminal({
+			name: `Tunnel - ${taskDetails.vm_name}`,
+			shellPath: '/bin/bash',
+			shellArgs: ['-c', tunnelCommand],
+			location: vscode.TerminalLocation.Panel,
+		});
+
+		terminal.show();
+
+		// Wait a moment for tunnel to establish
+		await new Promise((resolve) => setTimeout(resolve, 2000));
+
+		// Open VSCode simple browser
+		await vscode.commands.executeCommand('simpleBrowser.show', 'http://localhost:3715');
+
+		outputChannel.appendLine(`[COMMAND] Tunnel created and browser opened`);
+		vscode.window.showInformationMessage(
+			'Tunnel created and browser opened. Keep the tunnel terminal running.'
+		);
+	} catch (error) {
+		outputChannel.appendLine(`[ERROR] Failed to test from local browser: ${error}`);
+		vscode.window.showErrorMessage(`Failed to test from local browser: ${error}`);
 	}
 }
 
