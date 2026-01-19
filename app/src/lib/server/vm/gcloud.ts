@@ -1,9 +1,43 @@
 import { spawn } from 'node:child_process';
-import * as pty from 'node-pty';
 import { env } from '$env/dynamic/private';
 
+// Use Bun's built-in Terminal API for PTY support
+// This avoids node-pty compatibility issues with Bun runtime
+
+// Type declarations for Bun's Terminal API (to avoid global bun-types conflicting with Vite types)
+interface BunTerminal {
+	write: (data: string | Uint8Array) => void;
+	resize: (cols: number, rows: number) => void;
+	close: () => void;
+}
+
+interface BunTerminalOptions {
+	cols?: number;
+	rows?: number;
+	name?: string;
+	data?: (terminal: BunTerminal, data: Uint8Array) => void;
+	exit?: (terminal: BunTerminal, exitCode: number, signal: string | null) => void;
+}
+
+interface BunSubprocess {
+	terminal: BunTerminal;
+	pid: number;
+	exited: Promise<number>;
+	kill: (signal?: number) => void;
+}
+
+interface BunSpawnOptions {
+	cwd?: string;
+	env?: Record<string, string>;
+	terminal?: BunTerminalOptions;
+}
+
+declare const Bun: {
+	spawn: (cmd: string[], options?: BunSpawnOptions) => BunSubprocess;
+};
+
 export interface GcloudConnection {
-	process: pty.IPty;
+	process: BunSubprocess;
 	vmName: string;
 	zone: string;
 	project: string;
@@ -18,7 +52,7 @@ export interface GcloudConnection {
 /**
  * Start an interactive SSH session to a GCP VM using gcloud compute ssh
  * This uses IAP tunneling so no SSH keys are needed
- * Uses node-pty for proper PTY allocation (required for interactive CLI tools)
+ * Uses Bun.Terminal for proper PTY allocation (required for interactive CLI tools)
  */
 export function connectToVM(vmName: string, zone?: string, project?: string): GcloudConnection {
 	const gcpZone = zone || env.GCP_ZONE || 'us-central1-a';
@@ -28,8 +62,9 @@ export function connectToVM(vmName: string, zone?: string, project?: string): Gc
 		throw new Error('GCP_PROJECT_ID environment variable is required');
 	}
 
-	// Build gcloud compute ssh command arguments
-	const args = [
+	// Build gcloud compute ssh command
+	const cmd = [
+		'gcloud',
 		'compute',
 		'ssh',
 		vmName,
@@ -39,35 +74,48 @@ export function connectToVM(vmName: string, zone?: string, project?: string): Gc
 		'--quiet', // Skip prompts
 	];
 
-	console.log(`[gcloud] Spawning SSH with PTY: gcloud ${args.join(' ')}`);
-
-	// Use node-pty for proper pseudo-terminal allocation
-	// This is required for interactive CLI tools like claude-code
-	const proc = pty.spawn('gcloud', args, {
-		name: 'xterm-256color',
-		cols: 120,
-		rows: 40,
-		cwd: process.cwd(),
-		env: process.env as { [key: string]: string },
-	});
+	console.log(`[gcloud] Spawning SSH with Bun.Terminal: ${cmd.join(' ')}`);
 
 	const dataCallbacks: ((data: string) => void)[] = [];
 	const errorCallbacks: ((error: Error) => void)[] = [];
 	const closeCallbacks: ((code: number | null) => void)[] = [];
 
-	proc.onData((data: string) => {
-		console.log(`[gcloud:pty] ${data.substring(0, 200)}${data.length > 200 ? '...' : ''}`);
-		dataCallbacks.forEach((cb) => {
-			cb(data);
-		});
-	});
+	// Use Bun.spawn with terminal option for proper PTY allocation
+	// This is Bun's native PTY implementation, avoiding node-pty compatibility issues
+	const proc = Bun.spawn(cmd, {
+		cwd: process.cwd(),
+		env: process.env as Record<string, string>,
+		terminal: {
+			cols: 120,
+			rows: 40,
+			name: 'xterm-256color',
+			data(_terminal: BunTerminal, data: Uint8Array) {
+				const str = new TextDecoder().decode(data);
+				console.log(`[gcloud:pty] ${str.substring(0, 200)}${str.length > 200 ? '...' : ''}`);
+				dataCallbacks.forEach((cb) => {
+					cb(str);
+				});
+			},
+			exit(_terminal: BunTerminal, exitCode: number, signal: string | null) {
+				console.log(`[gcloud:close] PTY process exited with code ${exitCode}, signal ${signal}`);
+				closeCallbacks.forEach((cb) => {
+					cb(exitCode);
+				});
+			},
+		},
+	}) as BunSubprocess;
 
-	proc.onExit(({ exitCode }) => {
-		console.log(`[gcloud:close] PTY process exited with code ${exitCode}`);
-		closeCallbacks.forEach((cb) => {
-			cb(exitCode);
+	// Also handle process exit via the exited promise
+	proc.exited
+		.then((exitCode) => {
+			console.log(`[gcloud:exited] Process exited with code ${exitCode}`);
+		})
+		.catch((err) => {
+			console.error(`[gcloud:error] Process error:`, err);
+			errorCallbacks.forEach((cb) => {
+				cb(err);
+			});
 		});
-	});
 
 	return {
 		process: proc,
@@ -75,11 +123,11 @@ export function connectToVM(vmName: string, zone?: string, project?: string): Gc
 		zone: gcpZone,
 		project: gcpProject,
 		write: (data: string) => {
-			proc.write(data);
+			proc.terminal.write(data);
 		},
 		resize: (cols: number, rows: number) => {
 			console.log(`[gcloud:resize] Resizing PTY to ${cols}x${rows}`);
-			proc.resize(cols, rows);
+			proc.terminal.resize(cols, rows);
 		},
 		onData: (callback: (data: string) => void) => {
 			dataCallbacks.push(callback);
@@ -91,6 +139,7 @@ export function connectToVM(vmName: string, zone?: string, project?: string): Gc
 			closeCallbacks.push(callback);
 		},
 		close: () => {
+			proc.terminal.close();
 			proc.kill();
 		},
 	};
