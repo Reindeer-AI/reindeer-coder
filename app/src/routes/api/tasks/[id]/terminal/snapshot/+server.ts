@@ -2,7 +2,7 @@ import { error, json } from '@sveltejs/kit';
 import { extractBearerToken, verifyToken } from '$lib/server/auth';
 import { configService } from '$lib/server/config-service';
 import { getTaskById } from '$lib/server/db';
-import { getActiveConnection, manualReconnect } from '$lib/server/vm/orchestrator';
+import { getActiveConnection, manualReconnect, touchConnection } from '$lib/server/vm/orchestrator';
 import type { RequestHandler } from './$types';
 
 // GET /api/tasks/:id/terminal/snapshot - Get terminal snapshot (non-SSE)
@@ -65,6 +65,10 @@ export const GET: RequestHandler = async ({ params, request }) => {
 			);
 		}
 	}
+
+	// Touch the connection to keep it alive
+	// This updates lastActivity timestamp to prevent the connection from being marked as stale
+	touchConnection(params.id);
 
 	return json({
 		terminal_buffer: terminalBuffer,

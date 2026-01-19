@@ -37,6 +37,8 @@ export function connectToVM(vmName: string, zone?: string, project?: string): Gc
 		`--project=${gcpProject}`,
 		'--tunnel-through-iap',
 		'--quiet', // Skip prompts
+		'--ssh-flag=-o ServerAliveInterval=30', // Send keepalive every 30 seconds
+		'--ssh-flag=-o ServerAliveCountMax=3', // After 3 failed keepalives, consider connection dead
 	];
 
 	console.log(`[gcloud] Spawning SSH with PTY: gcloud ${args.join(' ')}`);

@@ -362,6 +362,18 @@ export function getActiveConnection(taskId: string): GcloudConnection | undefine
 }
 
 /**
+ * Update the last activity timestamp for a connection
+ * This should be called whenever we interact with the connection (even just reading)
+ */
+export function touchConnection(taskId: string): void {
+	const state = activeConnections.get(taskId);
+	if (state) {
+		state.lastActivity = new Date();
+		console.log(`[orchestrator] Touched connection for task ${taskId}`);
+	}
+}
+
+/**
  * Get the connection status for a task
  */
 export function getConnectionStatus(
