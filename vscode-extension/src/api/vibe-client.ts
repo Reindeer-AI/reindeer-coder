@@ -40,6 +40,7 @@ export interface Task {
 
 export class VibeClient {
 	private client: AxiosInstance;
+	private onAuthError?: () => void;
 
 	constructor(
 		readonly apiUrl: string,
@@ -58,6 +59,27 @@ export class VibeClient {
 			}
 			return config;
 		});
+
+		// Add response interceptor to handle 401 errors
+		this.client.interceptors.response.use(
+			(response) => response,
+			async (error) => {
+				if (error.response && error.response.status === 401) {
+					console.log('[VibeClient] 401 Unauthorized - triggering authentication flow');
+					if (this.onAuthError) {
+						this.onAuthError();
+					}
+				}
+				return Promise.reject(error);
+			}
+		);
+	}
+
+	/**
+	 * Set callback for authentication errors (401)
+	 */
+	setAuthErrorHandler(handler: () => void): void {
+		this.onAuthError = handler;
 	}
 
 	/**
@@ -111,5 +133,34 @@ export class VibeClient {
 		return tasks.filter((task) =>
 			['provisioning', 'initializing', 'cloning', 'running'].includes(task.status)
 		);
+	}
+
+	/**
+	 * Get the terminal snapshot for a task
+	 */
+	async getTerminalSnapshot(taskId: string): Promise<string> {
+		try {
+			console.log(`[VibeClient] Fetching terminal snapshot for task ${taskId}...`);
+			const response = await this.client.get<{ terminal_buffer: string }>(
+				`/api/tasks/${taskId}/terminal`
+			);
+			return response.data.terminal_buffer || '';
+		} catch (error) {
+			console.error(`Failed to get terminal snapshot for task ${taskId}:`, error);
+			throw new Error(`Failed to get terminal snapshot: ${error}`);
+		}
+	}
+
+	/**
+	 * Send text to a task's terminal
+	 */
+	async sendTextToTerminal(taskId: string, text: string): Promise<void> {
+		try {
+			console.log(`[VibeClient] Sending text to task ${taskId}...`);
+			await this.client.post(`/api/tasks/${taskId}/send-text`, { text });
+		} catch (error) {
+			console.error(`Failed to send text to task ${taskId}:`, error);
+			throw new Error(`Failed to send text: ${error}`);
+		}
 	}
 }

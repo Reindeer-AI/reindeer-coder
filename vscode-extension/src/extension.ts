@@ -68,6 +68,22 @@ export async function activate(context: vscode.ExtensionContext) {
 	outputChannel.appendLine('\n[API] Initializing Vibe API client...');
 	outputChannel.appendLine(`  API URL: ${apiUrl}`);
 	vibeClient = new VibeClient(apiUrl, () => auth0Client.getAccessToken());
+
+	// Set up auth error handler to automatically trigger login on 401
+	vibeClient.setAuthErrorHandler(async () => {
+		outputChannel.appendLine('[AUTH] 401 error detected - triggering login flow');
+		vscode.window
+			.showWarningMessage('Authentication expired. Please log in again.', 'Login')
+			.then(async (selection) => {
+				if (selection === 'Login') {
+					const success = await auth0Client.login();
+					if (success) {
+						await checkAuthAndLoadTasks();
+					}
+				}
+			});
+	});
+
 	outputChannel.appendLine('[API] Vibe API client initialized');
 
 	// Initialize managers
@@ -171,6 +187,27 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('vibeCoding.disconnectTask', async (taskId: string) => {
 			await disconnectFromTask(taskId);
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('vibeCoding.viewTerminalSnapshot', async (taskId: string) => {
+			await viewTerminalSnapshot(taskId);
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand(
+			'vibeCoding.refreshTerminalSnapshot',
+			async (taskId: string) => {
+				await refreshTerminalSnapshot(taskId);
+			}
+		)
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('vibeCoding.sendTextToTerminal', async (taskId: string) => {
+			await sendTextToTerminal(taskId);
 		})
 	);
 
@@ -488,6 +525,153 @@ async function disconnectFromTask(taskId: string): Promise<void> {
 	} catch (error) {
 		outputChannel.appendLine(`Failed to disconnect from task: ${error}`);
 		vscode.window.showErrorMessage(`Failed to disconnect from task: ${error}`);
+	}
+}
+
+/**
+ * View terminal snapshot for a task
+ */
+async function viewTerminalSnapshot(taskId: string): Promise<void> {
+	try {
+		outputChannel.appendLine(
+			`\n[COMMAND] View terminal snapshot for task ${taskId.substring(0, 8)}`
+		);
+
+		// Show progress
+		await vscode.window.withProgress(
+			{
+				location: vscode.ProgressLocation.Notification,
+				title: `Loading terminal snapshot...`,
+				cancellable: false,
+			},
+			async (progress) => {
+				// Fetch terminal snapshot
+				progress.report({ message: 'Fetching terminal data...' });
+				const terminalBuffer = await vibeClient.getTerminalSnapshot(taskId);
+
+				if (!terminalBuffer) {
+					vscode.window.showWarningMessage('No terminal snapshot available for this task');
+					return;
+				}
+
+				// Create a temporary file to show the terminal snapshot
+				progress.report({ message: 'Creating temporary file...' });
+				const fs = require('node:fs').promises;
+				const path = require('node:path');
+				const os = require('node:os');
+
+				const tmpDir = os.tmpdir();
+				const tmpFile = path.join(tmpDir, `vibe-terminal-${taskId.substring(0, 8)}.txt`);
+
+				await fs.writeFile(tmpFile, terminalBuffer, 'utf-8');
+
+				// Open the file in the editor
+				const doc = await vscode.workspace.openTextDocument(tmpFile);
+				await vscode.window.showTextDocument(doc, { preview: false });
+
+				outputChannel.appendLine(`[COMMAND] Terminal snapshot opened in editor: ${tmpFile}`);
+			}
+		);
+	} catch (error) {
+		outputChannel.appendLine(`[ERROR] Failed to view terminal snapshot: ${error}`);
+		vscode.window.showErrorMessage(`Failed to view terminal snapshot: ${error}`);
+	}
+}
+
+/**
+ * Refresh terminal snapshot (re-fetch and update the open file if any)
+ */
+async function refreshTerminalSnapshot(taskId: string): Promise<void> {
+	try {
+		outputChannel.appendLine(
+			`\n[COMMAND] Refresh terminal snapshot for task ${taskId.substring(0, 8)}`
+		);
+
+		// Show progress
+		await vscode.window.withProgress(
+			{
+				location: vscode.ProgressLocation.Notification,
+				title: `Refreshing terminal snapshot...`,
+				cancellable: false,
+			},
+			async (progress) => {
+				// Fetch terminal snapshot
+				progress.report({ message: 'Fetching latest terminal data...' });
+				const terminalBuffer = await vibeClient.getTerminalSnapshot(taskId);
+
+				if (!terminalBuffer) {
+					vscode.window.showWarningMessage('No terminal snapshot available for this task');
+					return;
+				}
+
+				// Update the temporary file
+				progress.report({ message: 'Updating terminal snapshot...' });
+				const fs = require('node:fs').promises;
+				const path = require('node:path');
+				const os = require('node:os');
+
+				const tmpDir = os.tmpdir();
+				const tmpFile = path.join(tmpDir, `vibe-terminal-${taskId.substring(0, 8)}.txt`);
+
+				await fs.writeFile(tmpFile, terminalBuffer, 'utf-8');
+
+				// Check if the file is already open and refresh it
+				const openDoc = vscode.workspace.textDocuments.find((doc) => doc.uri.fsPath === tmpFile);
+				if (openDoc) {
+					// The document will auto-refresh since we've updated the file
+					vscode.window.showInformationMessage('Terminal snapshot refreshed');
+				} else {
+					// Open the file if not already open
+					const doc = await vscode.workspace.openTextDocument(tmpFile);
+					await vscode.window.showTextDocument(doc, { preview: false });
+				}
+
+				outputChannel.appendLine(`[COMMAND] Terminal snapshot refreshed: ${tmpFile}`);
+			}
+		);
+	} catch (error) {
+		outputChannel.appendLine(`[ERROR] Failed to refresh terminal snapshot: ${error}`);
+		vscode.window.showErrorMessage(`Failed to refresh terminal snapshot: ${error}`);
+	}
+}
+
+/**
+ * Send text to terminal
+ */
+async function sendTextToTerminal(taskId: string): Promise<void> {
+	try {
+		outputChannel.appendLine(
+			`\n[COMMAND] Send text to terminal for task ${taskId.substring(0, 8)}`
+		);
+
+		// Prompt user for text to send
+		const text = await vscode.window.showInputBox({
+			prompt: 'Enter text to send to the terminal',
+			placeHolder: 'e.g., ls -la',
+		});
+
+		if (!text) {
+			outputChannel.appendLine('[COMMAND] User cancelled text input');
+			return;
+		}
+
+		// Show progress
+		await vscode.window.withProgress(
+			{
+				location: vscode.ProgressLocation.Notification,
+				title: `Sending text to terminal...`,
+				cancellable: false,
+			},
+			async (progress) => {
+				progress.report({ message: 'Sending...' });
+				await vibeClient.sendTextToTerminal(taskId, text);
+				vscode.window.showInformationMessage(`Text sent to terminal: ${text}`);
+				outputChannel.appendLine(`[COMMAND] Text sent successfully: ${text}`);
+			}
+		);
+	} catch (error) {
+		outputChannel.appendLine(`[ERROR] Failed to send text to terminal: ${error}`);
+		vscode.window.showErrorMessage(`Failed to send text to terminal: ${error}`);
 	}
 }
 
