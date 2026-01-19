@@ -158,6 +158,7 @@ export class VibeClient {
 
 	/**
 	 * Get the terminal snapshot for a task
+	 * Note: Background polling keeps connections alive, so this should usually succeed immediately
 	 */
 	async getTerminalSnapshot(taskId: string): Promise<string> {
 		try {
@@ -170,19 +171,34 @@ export class VibeClient {
 				validateStatus: (status) => status < 300 || status === 202,
 			});
 
-			// Handle 202 Accepted (reconnecting)
+			// Handle 202 Accepted (reconnecting) - wait and retry up to 3 times
 			if (response.status === 202) {
 				console.log(`[VibeClient] Terminal reconnecting for task ${taskId}, retrying...`);
 				const retryAfter = response.data.retry_after || 3;
-				await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
-				// Retry once
-				const retryResponse = await this.client.get<{ terminal_buffer: string }>(
-					`/api/tasks/${taskId}/terminal/snapshot`
-				);
-				console.log(
-					`[VibeClient] Received terminal buffer after retry: ${retryResponse.data.terminal_buffer.length} chars`
-				);
-				return retryResponse.data.terminal_buffer;
+				const maxRetries = 3;
+
+				for (let i = 0; i < maxRetries; i++) {
+					await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
+					console.log(`[VibeClient] Retry attempt ${i + 1}/${maxRetries}...`);
+
+					const retryResponse = await this.client.get<{
+						terminal_buffer: string;
+						status?: string;
+					}>(`/api/tasks/${taskId}/terminal/snapshot`, {
+						validateStatus: (status) => status < 300 || status === 202,
+					});
+
+					if (retryResponse.status === 200) {
+						console.log(
+							`[VibeClient] Received terminal buffer after retry: ${retryResponse.data.terminal_buffer.length} chars`
+						);
+						return retryResponse.data.terminal_buffer;
+					}
+				}
+
+				// If still 202 after all retries, return empty or what we have
+				console.log(`[VibeClient] Still reconnecting after ${maxRetries} retries, returning empty`);
+				return response.data.terminal_buffer || '';
 			}
 
 			console.log(
@@ -201,6 +217,7 @@ export class VibeClient {
 
 	/**
 	 * Send text to a task's terminal
+	 * Note: Background polling keeps connections alive, so this should usually succeed immediately
 	 */
 	async sendTextToTerminal(taskId: string, text: string): Promise<void> {
 		try {
@@ -211,15 +228,32 @@ export class VibeClient {
 				{ validateStatus: (status) => status < 300 || status === 202 }
 			);
 
-			// Handle 202 Accepted (reconnecting)
+			// Handle 202 Accepted (reconnecting) - wait and retry up to 3 times
 			if (response.status === 202) {
 				console.log(`[VibeClient] Terminal reconnecting for task ${taskId}, retrying send...`);
 				const retryAfter = response.data.retry_after || 3;
-				await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
-				// Retry once
-				await this.client.post(`/api/tasks/${taskId}/send-text`, { text });
-				console.log(`[VibeClient] Text sent successfully after retry`);
-				return;
+				const maxRetries = 3;
+
+				for (let i = 0; i < maxRetries; i++) {
+					await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
+					console.log(`[VibeClient] Send retry attempt ${i + 1}/${maxRetries}...`);
+
+					const retryResponse = await this.client.post<{ status?: string }>(
+						`/api/tasks/${taskId}/send-text`,
+						{ text },
+						{ validateStatus: (status) => status < 300 || status === 202 }
+					);
+
+					if (retryResponse.status === 200) {
+						console.log(`[VibeClient] Text sent successfully after retry`);
+						return;
+					}
+				}
+
+				// If still 202 after all retries, throw error
+				throw new Error(
+					`Terminal still reconnecting after ${maxRetries} retries. Please try again later.`
+				);
 			}
 
 			console.log(`[VibeClient] Text sent successfully`);

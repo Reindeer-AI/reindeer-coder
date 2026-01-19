@@ -105,6 +105,44 @@ export async function activate(context: vscode.ExtensionContext) {
 	outputChannel.appendLine('\n[AUTH] Checking authentication status...');
 	await checkAuthAndLoadTasks();
 
+	// Start background polling to keep terminal snapshots fresh
+	outputChannel.appendLine('\n[POLLING] Starting background terminal snapshot polling...');
+	const pollingInterval = setInterval(async () => {
+		try {
+			const isAuth = await auth0Client.isAuthenticated();
+			if (!isAuth) {
+				return; // Skip polling if not authenticated
+			}
+
+			// Get all running tasks
+			const tasks = await vibeClient.listActiveTasks();
+			outputChannel.appendLine(
+				`[POLLING] Refreshing terminal snapshots for ${tasks.length} running tasks...`
+			);
+
+			// Fetch terminal snapshots in the background to keep connections alive
+			for (const task of tasks) {
+				try {
+					await vibeClient.getTerminalSnapshot(task.id);
+					outputChannel.appendLine(`[POLLING] ✓ Task ${task.id.substring(0, 8)}`);
+				} catch (error) {
+					// Silent fail - don't show errors to user for background polling
+					outputChannel.appendLine(`[POLLING] ✗ Task ${task.id.substring(0, 8)}: ${error}`);
+				}
+			}
+		} catch (error) {
+			outputChannel.appendLine(`[POLLING] Error during background poll: ${error}`);
+		}
+	}, 60000); // Poll every 60 seconds
+
+	// Clean up polling on deactivation
+	context.subscriptions.push({
+		dispose: () => {
+			clearInterval(pollingInterval);
+			outputChannel.appendLine('[POLLING] Background polling stopped');
+		},
+	});
+
 	// Register commands
 	context.subscriptions.push(
 		vscode.commands.registerCommand('vibeCoding.login', async () => {
