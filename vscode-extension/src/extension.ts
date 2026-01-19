@@ -531,6 +531,43 @@ async function disconnectFromTask(taskId: string): Promise<void> {
 /**
  * View terminal snapshot for a task
  */
+/**
+ * Process terminal buffer through xterm-headless to interpret ANSI sequences
+ */
+function processTerminalBuffer(rawBuffer: string): string {
+	try {
+		const { Terminal } = require('@xterm/headless');
+
+		// Create a headless terminal instance
+		const terminal = new Terminal({
+			cols: 200, // Wide enough for most content
+			rows: 10000, // Very tall to capture all history
+		});
+
+		// Write the raw buffer to the terminal
+		terminal.write(rawBuffer);
+
+		// Extract the rendered text
+		const lines: string[] = [];
+		for (let i = 0; i < terminal.buffer.active.length; i++) {
+			const line = terminal.buffer.active.getLine(i);
+			if (line) {
+				lines.push(line.translateToString(true)); // true = trim right whitespace
+			}
+		}
+
+		// Dispose the terminal
+		terminal.dispose();
+
+		// Join lines and clean up
+		return lines.join('\n').trimEnd();
+	} catch (error) {
+		outputChannel.appendLine(`[ERROR] Failed to process terminal buffer: ${error}`);
+		// Fall back to raw buffer if processing fails
+		return rawBuffer;
+	}
+}
+
 async function viewTerminalSnapshot(taskId: string): Promise<void> {
 	try {
 		outputChannel.appendLine(
@@ -554,6 +591,10 @@ async function viewTerminalSnapshot(taskId: string): Promise<void> {
 					return;
 				}
 
+				// Process terminal buffer to interpret ANSI sequences
+				progress.report({ message: 'Processing terminal output...' });
+				const processedBuffer = processTerminalBuffer(terminalBuffer);
+
 				// Create a temporary file to show the terminal snapshot
 				progress.report({ message: 'Creating temporary file...' });
 				const fs = require('node:fs').promises;
@@ -563,7 +604,7 @@ async function viewTerminalSnapshot(taskId: string): Promise<void> {
 				const tmpDir = os.tmpdir();
 				const tmpFile = path.join(tmpDir, `vibe-terminal-${taskId.substring(0, 8)}.txt`);
 
-				await fs.writeFile(tmpFile, terminalBuffer, 'utf-8');
+				await fs.writeFile(tmpFile, processedBuffer, 'utf-8');
 
 				// Open the file in the editor
 				const doc = await vscode.workspace.openTextDocument(tmpFile);
@@ -604,6 +645,10 @@ async function refreshTerminalSnapshot(taskId: string): Promise<void> {
 					return;
 				}
 
+				// Process terminal buffer to interpret ANSI sequences
+				progress.report({ message: 'Processing terminal output...' });
+				const processedBuffer = processTerminalBuffer(terminalBuffer);
+
 				// Update the temporary file
 				progress.report({ message: 'Updating terminal snapshot...' });
 				const fs = require('node:fs').promises;
@@ -613,7 +658,7 @@ async function refreshTerminalSnapshot(taskId: string): Promise<void> {
 				const tmpDir = os.tmpdir();
 				const tmpFile = path.join(tmpDir, `vibe-terminal-${taskId.substring(0, 8)}.txt`);
 
-				await fs.writeFile(tmpFile, terminalBuffer, 'utf-8');
+				await fs.writeFile(tmpFile, processedBuffer, 'utf-8');
 
 				// Check if the file is already open and refresh it
 				const openDoc = vscode.workspace.textDocuments.find((doc) => doc.uri.fsPath === tmpFile);
