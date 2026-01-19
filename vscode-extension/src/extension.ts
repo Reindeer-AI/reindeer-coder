@@ -113,57 +113,57 @@ export async function activate(context: vscode.ExtensionContext) {
 	outputChannel.appendLine('\n[AUTH] Checking authentication status...');
 	await checkAuthAndLoadTasks();
 
-	// Start background polling to keep terminal snapshots fresh
-	// Poll every 5 minutes to reduce load and avoid excessive reconnections
-	outputChannel.appendLine(
-		'\n[POLLING] Starting background terminal snapshot polling (every 5 min)...'
-	);
-	const pollingInterval = setInterval(async () => {
-		try {
-			const isAuth = await auth0Client.isAuthenticated();
-			if (!isAuth) {
-				return; // Skip polling if not authenticated
-			}
+	// Background polling disabled - it interferes with tmux sessions
+	// Terminal snapshots are fetched on-demand when user views/refreshes them
+	// Connections are kept alive via SSH keepalive (ServerAliveInterval=30)
+	outputChannel.appendLine('\n[POLLING] Background polling disabled');
 
-			// Get all running tasks
-			const tasks = await vibeClient.listActiveTasks();
-			if (tasks.length === 0) {
-				return; // No running tasks, skip polling
-			}
-
-			outputChannel.appendLine(
-				`[POLLING] Refreshing terminal snapshots for ${tasks.length} running tasks...`
-			);
-
-			// Fetch terminal snapshots in the background to keep connections alive
-			// Use Promise.allSettled to run all requests in parallel without waiting
-			const snapshotPromises = tasks.map((task) =>
-				vibeClient
-					.getTerminalSnapshot(task.id)
-					.then(() => {
-						outputChannel.appendLine(`[POLLING] ✓ Task ${task.id.substring(0, 8)}`);
-					})
-					.catch((error: any) => {
-						// Silent fail - don't show errors to user for background polling
-						const errorMsg = error?.message || error?.toString() || 'Unknown error';
-						outputChannel.appendLine(`[POLLING] ✗ Task ${task.id.substring(0, 8)}: ${errorMsg}`);
-					})
-			);
-
-			// Wait for all snapshot requests to complete (or timeout)
-			await Promise.allSettled(snapshotPromises);
-		} catch (error) {
-			outputChannel.appendLine(`[POLLING] Error during background poll: ${error}`);
-		}
-	}, 300000); // Poll every 5 minutes (300,000 ms)
-
-	// Clean up polling on deactivation
-	context.subscriptions.push({
-		dispose: () => {
-			clearInterval(pollingInterval);
-			outputChannel.appendLine('[POLLING] Background polling stopped');
-		},
-	});
+	// const pollingInterval = setInterval(async () => {
+	// 	try {
+	// 		const isAuth = await auth0Client.isAuthenticated();
+	// 		if (!isAuth) {
+	// 			return; // Skip polling if not authenticated
+	// 		}
+	//
+	// 		// Get all running tasks
+	// 		const tasks = await vibeClient.listActiveTasks();
+	// 		if (tasks.length === 0) {
+	// 			return; // No running tasks, skip polling
+	// 		}
+	//
+	// 		outputChannel.appendLine(
+	// 			`[POLLING] Refreshing terminal snapshots for ${tasks.length} running tasks...`
+	// 		);
+	//
+	// 		// Fetch terminal snapshots in the background to keep connections alive
+	// 		// Use Promise.allSettled to run all requests in parallel without waiting
+	// 		const snapshotPromises = tasks.map((task) =>
+	// 			vibeClient
+	// 				.getTerminalSnapshot(task.id)
+	// 				.then(() => {
+	// 					outputChannel.appendLine(`[POLLING] ✓ Task ${task.id.substring(0, 8)}`);
+	// 				})
+	// 				.catch((error: any) => {
+	// 					// Silent fail - don't show errors to user for background polling
+	// 					const errorMsg = error?.message || error?.toString() || 'Unknown error';
+	// 					outputChannel.appendLine(`[POLLING] ✗ Task ${task.id.substring(0, 8)}: ${errorMsg}`);
+	// 				})
+	// 		);
+	//
+	// 		// Wait for all snapshot requests to complete (or timeout)
+	// 		await Promise.allSettled(snapshotPromises);
+	// 	} catch (error) {
+	// 		outputChannel.appendLine(`[POLLING] Error during background poll: ${error}`);
+	// 	}
+	// }, 300000); // Poll every 5 minutes (300,000 ms)
+	//
+	// // Clean up polling on deactivation
+	// context.subscriptions.push({
+	// 	dispose: () => {
+	// 		clearInterval(pollingInterval);
+	// 		outputChannel.appendLine('[POLLING] Background polling stopped');
+	// 	},
+	// });
 
 	// Register commands
 	context.subscriptions.push(
