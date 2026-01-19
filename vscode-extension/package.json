@@ -145,7 +145,6 @@
 		"typescript": "^5.3.0"
 	},
 	"dependencies": {
-		"@xterm/headless": "^6.0.0",
 		"axios": "^1.6.0"
 	}
 }
