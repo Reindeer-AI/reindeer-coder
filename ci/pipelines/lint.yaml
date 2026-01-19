@@ -16,8 +16,8 @@ lint:
   stage: lint
   image: node:20-bookworm
   before_script:
-    # Install system dependencies
-    - apt-get update && apt-get install -y git python3 make g++
+    # Install system dependencies including pip
+    - apt-get update && apt-get install -y git python3 python3-pip make g++
     # Install pre-commit
     - pip install pre-commit --break-system-packages
     # Install all dependencies with npm
