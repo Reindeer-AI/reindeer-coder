@@ -299,7 +299,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('reindeerCoder.createNewTask', async () => {
 			outputChannel.appendLine('\n[COMMAND] Create new task command triggered');
-			CreateTaskPanel.createOrShow(context.extensionUri, vibeClient, async () => {
+			CreateTaskPanel.createOrShow(context.extensionUri, auth0Client, vibeClient, async () => {
 				outputChannel.appendLine('[COMMAND] Task created, refreshing task list');
 				await loadTasks();
 			});

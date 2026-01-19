@@ -260,4 +260,32 @@ export class Auth0Client {
 		console.log(`[Auth0] Is authenticated: ${isAuth}`);
 		return isAuth;
 	}
+
+	/**
+	 * Get user info from the access token
+	 */
+	async getUserInfo(): Promise<{ email?: string; name?: string } | null> {
+		try {
+			const token = await this.getAccessToken();
+			if (!token) {
+				return null;
+			}
+
+			// Decode JWT token (just the payload, no signature verification needed since we trust our own storage)
+			const parts = token.split('.');
+			if (parts.length !== 3) {
+				console.error('[Auth0] Invalid JWT token format');
+				return null;
+			}
+
+			const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
+			return {
+				email: payload.email || payload['https://vibe.reindeerlabs.ai/email'],
+				name: payload.name || payload['https://vibe.reindeerlabs.ai/name'],
+			};
+		} catch (error) {
+			console.error('[Auth0] Failed to get user info:', error);
+			return null;
+		}
+	}
 }
