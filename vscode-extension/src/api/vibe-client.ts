@@ -57,18 +57,39 @@ export class VibeClient {
 			if (token) {
 				config.headers.Authorization = `Bearer ${token}`;
 			}
+			console.log(`[VibeClient] → ${config.method?.toUpperCase()} ${config.url}`);
+			if (config.data) {
+				console.log(`[VibeClient] → Request body:`, config.data);
+			}
 			return config;
 		});
 
 		// Add response interceptor to handle 401 errors
 		this.client.interceptors.response.use(
-			(response) => response,
+			(response) => {
+				console.log(
+					`[VibeClient] ← ${response.status} ${response.config.method?.toUpperCase()} ${response.config.url}`
+				);
+				if (response.data) {
+					console.log(`[VibeClient] ← Response data:`, response.data);
+				}
+				return response;
+			},
 			async (error) => {
-				if (error.response && error.response.status === 401) {
-					console.log('[VibeClient] 401 Unauthorized - triggering authentication flow');
-					if (this.onAuthError) {
-						this.onAuthError();
+				if (error.response) {
+					console.log(
+						`[VibeClient] ← ${error.response.status} ${error.config?.method?.toUpperCase()} ${error.config?.url}`
+					);
+					console.log(`[VibeClient] ← Error response:`, error.response.data);
+
+					if (error.response.status === 401) {
+						console.log('[VibeClient] 401 Unauthorized - triggering authentication flow');
+						if (this.onAuthError) {
+							this.onAuthError();
+						}
 					}
+				} else {
+					console.log(`[VibeClient] ← Network error:`, error.message);
 				}
 				return Promise.reject(error);
 			}
