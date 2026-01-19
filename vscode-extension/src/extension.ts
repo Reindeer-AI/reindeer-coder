@@ -12,6 +12,14 @@ let sshfsManager: SSHFSManager;
 let terminalManager: TerminalManager;
 let outputChannel: vscode.OutputChannel;
 
+// Track snapshot terminals by task ID
+interface SnapshotTerminalState {
+	terminal: vscode.Terminal;
+	writeEmitter: vscode.EventEmitter<string>;
+	closeEmitter: vscode.EventEmitter<void>;
+}
+const snapshotTerminals = new Map<string, SnapshotTerminalState>();
+
 export async function activate(context: vscode.ExtensionContext) {
 	console.log('Vibe Coding extension is now active');
 
@@ -591,7 +599,7 @@ async function disconnectFromTask(taskId: string): Promise<void> {
 }
 
 /**
- * View terminal snapshot for a task
+ * View terminal snapshot for a task (reuses existing terminal if available)
  */
 async function viewTerminalSnapshot(taskId: string): Promise<void> {
 	try {
@@ -622,34 +630,69 @@ async function viewTerminalSnapshot(taskId: string): Promise<void> {
 					? `Snapshot - ${task.task_description.substring(0, 40)}${task.task_description.length > 40 ? '...' : ''}`
 					: `Snapshot - ${taskId.substring(0, 8)}`;
 
-				// Display in VSCode terminal (preserves ANSI codes for proper rendering)
-				progress.report({ message: 'Opening terminal...' });
+				// Check if we already have a terminal for this task
+				let terminalState = snapshotTerminals.get(taskId);
 
-				const pty: vscode.Pseudoterminal = {
-					onDidWrite: new vscode.EventEmitter<string>().event,
-					onDidClose: new vscode.EventEmitter<void>().event,
-					open: function () {
-						// Write the buffer content when terminal opens
-						this._writeEmitter.fire(terminalBuffer);
-						this._writeEmitter.fire('\r\n\r\n--- End of snapshot ---\r\n');
-					},
-					close: function () {
-						this._closeEmitter.fire();
-					},
-					_writeEmitter: new vscode.EventEmitter<string>(),
-					_closeEmitter: new vscode.EventEmitter<void>(),
-				};
+				// Check if terminal is still valid
+				if (terminalState && terminalState.terminal.exitStatus !== undefined) {
+					// Terminal was closed, remove it
+					snapshotTerminals.delete(taskId);
+					terminalState = undefined;
+				}
 
-				// Connect emitters
-				pty.onDidWrite = pty._writeEmitter.event;
-				pty.onDidClose = pty._closeEmitter.event;
+				if (terminalState) {
+					// Reuse existing terminal - clear and rewrite
+					progress.report({ message: 'Updating terminal...' });
+					outputChannel.appendLine(
+						`[COMMAND] Reusing existing terminal for task ${taskId.substring(0, 8)}`
+					);
 
-				const terminal = vscode.window.createTerminal({
-					name: terminalName,
-					pty: pty,
-				});
+					// Clear screen and move cursor to home
+					terminalState.writeEmitter.fire('\x1b[2J\x1b[H');
+					// Write new content
+					terminalState.writeEmitter.fire(terminalBuffer);
+					terminalState.writeEmitter.fire('\r\n\r\n--- End of snapshot ---\r\n');
+					// Show the terminal
+					terminalState.terminal.show();
+				} else {
+					// Create new terminal
+					progress.report({ message: 'Opening terminal...' });
+					outputChannel.appendLine(
+						`[COMMAND] Creating new terminal for task ${taskId.substring(0, 8)}`
+					);
 
-				terminal.show();
+					const writeEmitter = new vscode.EventEmitter<string>();
+					const closeEmitter = new vscode.EventEmitter<void>();
+
+					const pty: vscode.Pseudoterminal = {
+						onDidWrite: writeEmitter.event,
+						onDidClose: closeEmitter.event,
+						open: () => {
+							writeEmitter.fire(terminalBuffer);
+							writeEmitter.fire('\r\n\r\n--- End of snapshot ---\r\n');
+						},
+						close: () => {
+							closeEmitter.fire();
+							// Clean up when terminal is closed
+							snapshotTerminals.delete(taskId);
+						},
+					};
+
+					const terminal = vscode.window.createTerminal({
+						name: terminalName,
+						pty: pty,
+					});
+
+					// Track this terminal
+					snapshotTerminals.set(taskId, {
+						terminal,
+						writeEmitter,
+						closeEmitter,
+					});
+
+					terminal.show();
+				}
+
 				outputChannel.appendLine(`[COMMAND] Terminal snapshot displayed: ${terminalName}`);
 			}
 		);
@@ -660,7 +703,7 @@ async function viewTerminalSnapshot(taskId: string): Promise<void> {
 }
 
 /**
- * Refresh terminal snapshot (re-fetch and display in new terminal)
+ * Refresh terminal snapshot (re-fetch and update existing terminal)
  */
 async function refreshTerminalSnapshot(taskId: string): Promise<void> {
 	try {
@@ -668,61 +711,10 @@ async function refreshTerminalSnapshot(taskId: string): Promise<void> {
 			`\n[COMMAND] Refresh terminal snapshot for task ${taskId.substring(0, 8)}`
 		);
 
-		// Show progress
-		await vscode.window.withProgress(
-			{
-				location: vscode.ProgressLocation.Notification,
-				title: `Refreshing terminal snapshot...`,
-				cancellable: false,
-			},
-			async (progress) => {
-				// Fetch terminal snapshot
-				progress.report({ message: 'Fetching latest terminal data...' });
-				const terminalBuffer = await vibeClient.getTerminalSnapshot(taskId);
+		// Just call viewTerminalSnapshot - it already handles reusing terminals
+		await viewTerminalSnapshot(taskId);
 
-				if (!terminalBuffer) {
-					vscode.window.showWarningMessage('No terminal snapshot available for this task');
-					return;
-				}
-
-				// Get task details for terminal name
-				const task = await vibeClient.getTask(taskId);
-				const terminalName = task.task_description
-					? `Snapshot - ${task.task_description.substring(0, 40)}${task.task_description.length > 40 ? '...' : ''} (Refreshed)`
-					: `Snapshot - ${taskId.substring(0, 8)} (Refreshed)`;
-
-				// Display in VSCode terminal (preserves ANSI codes for proper rendering)
-				progress.report({ message: 'Opening terminal...' });
-
-				const pty: vscode.Pseudoterminal = {
-					onDidWrite: new vscode.EventEmitter<string>().event,
-					onDidClose: new vscode.EventEmitter<void>().event,
-					open: function () {
-						// Write the buffer content when terminal opens
-						this._writeEmitter.fire(terminalBuffer);
-						this._writeEmitter.fire('\r\n\r\n--- End of snapshot ---\r\n');
-					},
-					close: function () {
-						this._closeEmitter.fire();
-					},
-					_writeEmitter: new vscode.EventEmitter<string>(),
-					_closeEmitter: new vscode.EventEmitter<void>(),
-				};
-
-				// Connect emitters
-				pty.onDidWrite = pty._writeEmitter.event;
-				pty.onDidClose = pty._closeEmitter.event;
-
-				const terminal = vscode.window.createTerminal({
-					name: terminalName,
-					pty: pty,
-				});
-
-				terminal.show();
-				outputChannel.appendLine(`[COMMAND] Terminal snapshot refreshed: ${terminalName}`);
-				vscode.window.showInformationMessage('Terminal snapshot refreshed');
-			}
-		);
+		vscode.window.showInformationMessage('Terminal snapshot refreshed');
 	} catch (error) {
 		outputChannel.appendLine(`[ERROR] Failed to refresh terminal snapshot: ${error}`);
 		vscode.window.showErrorMessage(`Failed to refresh terminal snapshot: ${error}`);
