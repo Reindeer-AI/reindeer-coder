@@ -9,10 +9,8 @@ import {
 	appendTerminalBuffer as appendTerminalBufferRaw,
 	getTaskById,
 	updateTaskStatus,
-	updateTaskTmuxSession,
 	updateTaskVmName,
 	updateTaskVmZone,
-	updateTaskWorkspacePath,
 } from '../db';
 import type { Task } from '../db/schema';
 import { getAnthropicApiKey } from '../secrets';
@@ -948,15 +946,6 @@ export async function startTask(taskId: string): Promise<void> {
 		await new Promise((resolve) => setTimeout(resolve, 1000));
 		conn.write(`tmux attach-session -t ${tmuxSession} 2>/dev/null || screen -r ${tmuxSession}\n`);
 		await new Promise((resolve) => setTimeout(resolve, 2000));
-
-		// Save tmux session name to database
-		await updateTaskTmuxSession(taskId, tmuxSession);
-		appendTerminalBuffer(taskId, `[system] Tmux session saved: ${tmuxSession}\r\n`);
-
-		// Save workspace path to database
-		const workspacePath = `/home/${vmUser}/workspace`;
-		await updateTaskWorkspacePath(taskId, workspacePath);
-		appendTerminalBuffer(taskId, `[system] Workspace path saved: ${workspacePath}\r\n`);
 
 		connState.status = 'connected';
 

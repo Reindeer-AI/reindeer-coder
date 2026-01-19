@@ -78,12 +78,6 @@ async function runMigrations() {
 	const metadataType = dbConfig.type === 'postgres' ? 'JSONB' : 'TEXT';
 	await addColumnIfNotExists('tasks', 'metadata', metadataType);
 
-	// Migration: Add tmux_session column
-	await addColumnIfNotExists('tasks', 'tmux_session', 'TEXT');
-
-	// Migration: Add workspace_path column
-	await addColumnIfNotExists('tasks', 'workspace_path', 'TEXT');
-
 	console.log('[db] Migrations completed');
 }
 
@@ -376,32 +370,6 @@ export async function updateTaskVmZone(id: string, zone: string): Promise<void> 
 		await (adapter as PostgresAdapter).run(sql, [zone, id]);
 	} else {
 		adapter.run(sql, [zone, id]);
-	}
-}
-
-/**
- * Update task tmux session
- */
-export async function updateTaskTmuxSession(id: string, tmuxSession: string): Promise<void> {
-	const sql = `UPDATE tasks SET tmux_session = ?, updated_at = ${sqlBuilder.now()} WHERE id = ?`;
-
-	if (isAsync) {
-		await (adapter as PostgresAdapter).run(sql, [tmuxSession, id]);
-	} else {
-		adapter.run(sql, [tmuxSession, id]);
-	}
-}
-
-/**
- * Update task workspace path
- */
-export async function updateTaskWorkspacePath(id: string, workspacePath: string): Promise<void> {
-	const sql = `UPDATE tasks SET workspace_path = ?, updated_at = ${sqlBuilder.now()} WHERE id = ?`;
-
-	if (isAsync) {
-		await (adapter as PostgresAdapter).run(sql, [workspacePath, id]);
-	} else {
-		adapter.run(sql, [workspacePath, id]);
 	}
 }
 
