@@ -51,6 +51,11 @@
 				"icon": "$(refresh)"
 			},
 			{
+				"command": "reindeerCoder.createNewTask",
+				"title": "Reindeer Coder: New Task",
+				"icon": "$(add)"
+			},
+			{
 				"command": "reindeerCoder.connectTask",
 				"title": "Open Workspace",
 				"icon": "$(folder-opened)"
@@ -59,6 +64,11 @@
 				"command": "reindeerCoder.connectTerminalOnly",
 				"title": "Open Terminal",
 				"icon": "$(terminal)"
+			},
+			{
+				"command": "reindeerCoder.testFromLocalBrowser",
+				"title": "Test from Local Browser",
+				"icon": "$(browser)"
 			},
 			{
 				"command": "reindeerCoder.disconnectTask",
@@ -82,6 +92,11 @@
 			],
 			"view/title": [
 				{
+					"command": "reindeerCoder.createNewTask",
+					"when": "view == reindeerCoderTasks",
+					"group": "navigation"
+				},
+				{
 					"command": "reindeerCoder.refreshTasks",
 					"when": "view == reindeerCoderTasks",
 					"group": "navigation"
@@ -91,12 +106,17 @@
 				{
 					"command": "reindeerCoder.connectTask",
 					"when": "view == reindeerCoderTasks && viewItem == task",
-					"group": "inline"
+					"group": "inline@1"
 				},
 				{
 					"command": "reindeerCoder.connectTerminalOnly",
 					"when": "view == reindeerCoderTasks && viewItem == task",
-					"group": "inline"
+					"group": "inline@2"
+				},
+				{
+					"command": "reindeerCoder.testFromLocalBrowser",
+					"when": "view == reindeerCoderTasks && viewItem == task",
+					"group": "inline@3"
 				}
 			]
 		},
@@ -148,6 +168,7 @@
 		"package": "vsce package"
 	},
 	"devDependencies": {
+		"@biomejs/biome": "^2.3.11",
 		"@types/node": "^20.10.0",
 		"@types/vscode": "^1.85.0",
 		"@vscode/vsce": "^3.7.1",
