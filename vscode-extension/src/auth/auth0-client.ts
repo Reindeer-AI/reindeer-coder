@@ -135,15 +135,22 @@ export class Auth0Client {
 	private async exchangeCodeForToken(code: string, verifier: string): Promise<void> {
 		const axios = require('axios');
 
+		const tokenRequest: any = {
+			grant_type: 'authorization_code',
+			client_id: this.clientId,
+			code,
+			code_verifier: verifier,
+			redirect_uri: this.redirectUri,
+		};
+
+		// Include audience if provided (required for custom APIs)
+		if (this.audience) {
+			tokenRequest.audience = this.audience;
+		}
+
 		const response = await axios.post<TokenResponse>(
 			`https://${this.domain}/oauth/token`,
-			{
-				grant_type: 'authorization_code',
-				client_id: this.clientId,
-				code,
-				code_verifier: verifier,
-				redirect_uri: this.redirectUri,
-			},
+			tokenRequest,
 			{
 				headers: { 'Content-Type': 'application/json' },
 			}

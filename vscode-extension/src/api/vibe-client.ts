@@ -142,11 +142,18 @@ export class VibeClient {
 		try {
 			console.log(`[VibeClient] Fetching terminal snapshot for task ${taskId}...`);
 			const response = await this.client.get<{ terminal_buffer: string }>(
-				`/api/tasks/${taskId}/terminal`
+				`/api/tasks/${taskId}/terminal/snapshot`
 			);
-			return response.data.terminal_buffer || '';
+			console.log(
+				`[VibeClient] Received terminal buffer: ${response.data.terminal_buffer.length} chars`
+			);
+			return response.data.terminal_buffer;
 		} catch (error) {
-			console.error(`Failed to get terminal snapshot for task ${taskId}:`, error);
+			console.error(`[VibeClient] Failed to get terminal snapshot for task ${taskId}:`, error);
+			if ((error as any).response) {
+				console.error(`[VibeClient] Response status: ${(error as any).response.status}`);
+				console.error(`[VibeClient] Response data:`, (error as any).response.data);
+			}
 			throw new Error(`Failed to get terminal snapshot: ${error}`);
 		}
 	}
@@ -158,6 +165,7 @@ export class VibeClient {
 		try {
 			console.log(`[VibeClient] Sending text to task ${taskId}...`);
 			await this.client.post(`/api/tasks/${taskId}/send-text`, { text });
+			console.log(`[VibeClient] Text sent successfully`);
 		} catch (error) {
 			console.error(`Failed to send text to task ${taskId}:`, error);
 			throw new Error(`Failed to send text: ${error}`);
