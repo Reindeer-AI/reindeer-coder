@@ -598,6 +598,7 @@ async function connectTerminalOnly(taskId: string, gcpProject: string): Promise<
 			name: terminalName,
 			shellPath: '/bin/bash',
 			shellArgs: ['-c', sshCommand],
+			location: vscode.TerminalLocation.Editor,
 		});
 
 		// Track terminal -> VM mapping for tmux session switching
@@ -609,7 +610,7 @@ async function connectTerminalOnly(taskId: string, gcpProject: string): Promise<
 		});
 
 		terminal.show();
-		outputChannel.appendLine(`Opened terminal for task ${shortId} in current window`);
+		outputChannel.appendLine(`Opened terminal for task ${shortId} in editor area`);
 
 		vscode.window.showInformationMessage(`Connected terminal to task ${shortId}`);
 	} catch (error) {
