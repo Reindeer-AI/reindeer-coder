@@ -14,21 +14,16 @@ stages:
 
 lint:
   stage: lint
-  image: python:3.12-slim
+  image: node:20-bookworm
   before_script:
-    # Install system dependencies (including build tools for native modules)
-    - apt-get update && apt-get install -y git curl unzip make g++ python3
+    # Install system dependencies
+    - apt-get update && apt-get install -y git python3 make g++
     # Install pre-commit
-    - pip install pre-commit
-    # Install Bun
-    - curl -fsSL https://bun.sh/install | bash
-    - export BUN_INSTALL="$HOME/.bun"
-    - export PATH="$BUN_INSTALL/bin:$PATH"
-    # Install all dependencies with Bun
-    - bun install --frozen-lockfile
+    - pip install pre-commit --break-system-packages
+    # Install all dependencies with npm
+    - npm ci
     # Install pre-commit hooks
     - pre-commit install-hooks
   script:
     - echo "Running pre-commit hooks on all files"
-    - export PATH="$HOME/.bun/bin:$PATH"
     - pre-commit run --all-files --hook-stage manual
