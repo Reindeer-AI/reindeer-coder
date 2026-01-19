@@ -32,7 +32,11 @@ export const GET: RequestHandler = async ({ params, request }) => {
 		throw error(403, 'Access denied');
 	}
 
+	// getTaskById already reads from terminal file if available
+	const terminalBuffer = task.terminal_buffer || '';
+	console.log(`[snapshot] Returning ${terminalBuffer.length} chars for task ${params.id}`);
+
 	return json({
-		terminal_buffer: task.terminal_buffer || '',
+		terminal_buffer: terminalBuffer,
 	});
 };
