@@ -21,25 +21,25 @@ interface SnapshotTerminalState {
 const snapshotTerminals = new Map<string, SnapshotTerminalState>();
 
 export async function activate(context: vscode.ExtensionContext) {
-	console.log('Vibe Coding extension is now active');
+	console.log('Reindeer Coder extension is now active');
 
 	// Create output channel
-	outputChannel = vscode.window.createOutputChannel('Vibe Coding');
+	outputChannel = vscode.window.createOutputChannel('Reindeer Coder');
 	outputChannel.show(); // Show output channel on activation for debugging
 	outputChannel.appendLine('='.repeat(80));
-	outputChannel.appendLine('Vibe Coding extension activated');
+	outputChannel.appendLine('Reindeer Coder extension activated');
 	outputChannel.appendLine(`Activation time: ${new Date().toISOString()}`);
 	outputChannel.appendLine('='.repeat(80));
 
 	// Get configuration
-	const config = vscode.workspace.getConfiguration('vibeCoding');
+	const config = vscode.workspace.getConfiguration('reindeerCoder');
 	const apiUrl = config.get<string>('apiUrl', 'https://vibe.reindeerlabs.ai');
 	const auth0Domain = config.get<string>('auth0Domain', 'dev-0d0uyl2iqc17144b.us.auth0.com');
 	const auth0ClientId = config.get<string>('auth0ClientId', 'i6QxH7zvtkkm5pD1iCS4mcIavVXhuOiZ');
 	const auth0Audience = config.get<string>('auth0Audience', 'https://vibe.reindeerlabs.ai');
 	const auth0OrganizationId = config.get<string>('auth0OrganizationId', 'org_9WU9bq88J0jAPjmM');
 	const gcpProject = config.get<string>('gcpProject', 'reindeer-vibe');
-	const mountPath = config.get<string>('mountPath', '~/vibe-mounts');
+	const mountPath = config.get<string>('mountPath', '~/reindeer-coder-mounts');
 
 	outputChannel.appendLine('\n[CONFIG] Loading configuration...');
 	outputChannel.appendLine(`  API URL: ${apiUrl}`);
@@ -53,9 +53,9 @@ export async function activate(context: vscode.ExtensionContext) {
 	// Validate Auth0 configuration
 	if (!auth0ClientId) {
 		const errorMsg =
-			'Auth0 Client ID is not configured. Please set vibeCoding.auth0ClientId in settings.';
+			'Auth0 Client ID is not configured. Please set reindeerCoder.auth0ClientId in settings.';
 		outputChannel.appendLine(`\n[ERROR] ${errorMsg}`);
-		vscode.window.showErrorMessage(`Vibe Coding: ${errorMsg}`);
+		vscode.window.showErrorMessage(`Reindeer Coder: ${errorMsg}`);
 		return;
 	}
 
@@ -72,8 +72,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	outputChannel.appendLine('[AUTH] Auth0 client initialized');
 
-	// Initialize Vibe API client
-	outputChannel.appendLine('\n[API] Initializing Vibe API client...');
+	// Initialize Reindeer Coder API client
+	outputChannel.appendLine('\n[API] Initializing Reindeer Coder API client...');
 	outputChannel.appendLine(`  API URL: ${apiUrl}`);
 	vibeClient = new VibeClient(apiUrl, () => auth0Client.getAccessToken());
 
@@ -92,7 +92,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			});
 	});
 
-	outputChannel.appendLine('[API] Vibe API client initialized');
+	outputChannel.appendLine('[API] Reindeer Coder API client initialized');
 
 	// Initialize managers
 	outputChannel.appendLine('\n[INIT] Initializing managers...');
@@ -103,7 +103,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	// Initialize tree view
 	outputChannel.appendLine('\n[UI] Initializing tree view...');
 	taskTreeProvider = new TaskTreeProvider();
-	const treeView = vscode.window.createTreeView('vibeCodingTasks', {
+	const treeView = vscode.window.createTreeView('reindeerCoderTasks', {
 		treeDataProvider: taskTreeProvider,
 	});
 	context.subscriptions.push(treeView);
@@ -167,7 +167,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	// Register commands
 	context.subscriptions.push(
-		vscode.commands.registerCommand('vibeCoding.login', async () => {
+		vscode.commands.registerCommand('reindeerCoder.login', async () => {
 			outputChannel.appendLine('\n[COMMAND] Login command triggered');
 			outputChannel.show();
 			const success = await auth0Client.login();
@@ -179,7 +179,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand('vibeCoding.logout', async () => {
+		vscode.commands.registerCommand('reindeerCoder.logout', async () => {
 			outputChannel.appendLine('\n[COMMAND] Logout command triggered');
 			await auth0Client.logout();
 			taskTreeProvider.setAuthenticated(false);
@@ -189,14 +189,14 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand('vibeCoding.refreshTasks', async () => {
+		vscode.commands.registerCommand('reindeerCoder.refreshTasks', async () => {
 			outputChannel.appendLine('\n[COMMAND] Refresh tasks command triggered');
 			await loadTasks();
 		})
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand('vibeCoding.showDebugInfo', async () => {
+		vscode.commands.registerCommand('reindeerCoder.showDebugInfo', async () => {
 			outputChannel.show();
 			outputChannel.appendLine(`\n${'='.repeat(80)}`);
 			outputChannel.appendLine('[DEBUG] Debug Information');
@@ -215,7 +215,7 @@ export async function activate(context: vscode.ExtensionContext) {
 			}
 
 			outputChannel.appendLine(`\nConfiguration:`);
-			const config = vscode.workspace.getConfiguration('vibeCoding');
+			const config = vscode.workspace.getConfiguration('reindeerCoder');
 			outputChannel.appendLine(`  API URL: ${config.get('apiUrl')}`);
 			outputChannel.appendLine(`  Auth0 Domain: ${config.get('auth0Domain')}`);
 			outputChannel.appendLine(`  Auth0 Client ID: ${config.get('auth0ClientId')}`);
@@ -225,19 +225,19 @@ export async function activate(context: vscode.ExtensionContext) {
 
 			outputChannel.appendLine('='.repeat(80));
 
-			vscode.window.showInformationMessage('Debug info written to Vibe Coding output channel');
+			vscode.window.showInformationMessage('Debug info written to Reindeer Coder output channel');
 		})
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand('vibeCoding.connectTask', async (item: TaskTreeItem) => {
+		vscode.commands.registerCommand('reindeerCoder.connectTask', async (item: TaskTreeItem) => {
 			await connectToTask(item.task.id, gcpProject, mountPath);
 		})
 	);
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand(
-			'vibeCoding.connectTerminalOnly',
+			'reindeerCoder.connectTerminalOnly',
 			async (item: TaskTreeItem) => {
 				await connectTerminalOnly(item.task.id, gcpProject);
 			}
@@ -245,20 +245,23 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand('vibeCoding.disconnectTask', async (taskId: string) => {
+		vscode.commands.registerCommand('reindeerCoder.disconnectTask', async (taskId: string) => {
 			await disconnectFromTask(taskId);
 		})
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand('vibeCoding.viewTerminalSnapshot', async (taskId: string) => {
-			await viewTerminalSnapshot(taskId);
-		})
+		vscode.commands.registerCommand(
+			'reindeerCoder.viewTerminalSnapshot',
+			async (taskId: string) => {
+				await viewTerminalSnapshot(taskId);
+			}
+		)
 	);
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand(
-			'vibeCoding.refreshTerminalSnapshot',
+			'reindeerCoder.refreshTerminalSnapshot',
 			async (taskId: string) => {
 				await refreshTerminalSnapshot(taskId);
 			}
@@ -266,13 +269,13 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand('vibeCoding.sendTextToTerminal', async (taskId: string) => {
+		vscode.commands.registerCommand('reindeerCoder.sendTextToTerminal', async (taskId: string) => {
 			await sendTextToTerminal(taskId);
 		})
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand('vibeCoding.showTaskDetails', async (taskId: string) => {
+		vscode.commands.registerCommand('reindeerCoder.showTaskDetails', async (taskId: string) => {
 			await showTaskDetails(taskId);
 		})
 	);
@@ -381,7 +384,7 @@ async function createWorkspaceConfig(
 			version: '2.0.0',
 			tasks: [
 				{
-					label: 'Connect to Vibe Session',
+					label: 'Connect to Reindeer Session',
 					type: 'shell',
 					command: `gcloud compute ssh ${options.vmName} --project=${options.project} --zone=${options.zone} --tunnel-through-iap --ssh-flag="-t" -- sudo -u reindeer-vibe tmux attach-session -t ${options.tmuxSession}`,
 					problemMatcher: [],
@@ -504,7 +507,7 @@ async function connectToTask(
 					vmName: taskDetails.vm_name!,
 					zone: taskDetails.vm_zone!,
 					project: gcpProject,
-					tmuxSession: taskDetails.tmux_session || `vibe-${taskId.substring(0, 8)}`,
+					tmuxSession: taskDetails.tmux_session || `coder-${taskId.substring(0, 8)}`,
 				});
 
 				// Open workspace in NEW window
@@ -515,7 +518,7 @@ async function connectToTask(
 				});
 
 				vscode.window.showInformationMessage(
-					`Connected to ${folderName}. Use Terminal > Run Task > "Connect to Vibe Session" to open the remote terminal.`
+					`Connected to ${folderName}. Use Terminal > Run Task > "Connect to Reindeer Session" to open the remote terminal.`
 				);
 			}
 		);
@@ -540,7 +543,7 @@ async function connectTerminalOnly(taskId: string, gcpProject: string): Promise<
 		}
 
 		const shortId = taskId.substring(0, 8);
-		const tmuxSession = taskDetails.tmux_session || `vibe-${shortId}`;
+		const tmuxSession = taskDetails.tmux_session || `coder-${shortId}`;
 
 		// Build SSH command with correct flags and sudo to reindeer-vibe user
 		const sshCommand = [
@@ -798,5 +801,5 @@ async function showTaskDetails(taskId: string): Promise<void> {
 }
 
 export function deactivate() {
-	console.log('Vibe Coding extension is now deactivated');
+	console.log('Reindeer Coder extension is now deactivated');
 }

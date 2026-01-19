@@ -9,9 +9,9 @@ interface TokenResponse {
 }
 
 export class Auth0Client {
-	private static readonly TOKEN_KEY = 'vibe-coding-access-token';
-	private static readonly REFRESH_TOKEN_KEY = 'vibe-coding-refresh-token';
-	private static readonly TOKEN_EXPIRY_KEY = 'vibe-coding-token-expiry';
+	private static readonly TOKEN_KEY = 'reindeer-coder-access-token';
+	private static readonly REFRESH_TOKEN_KEY = 'reindeer-coder-refresh-token';
+	private static readonly TOKEN_EXPIRY_KEY = 'reindeer-coder-token-expiry';
 
 	constructor(
 		private readonly context: vscode.ExtensionContext,
@@ -76,7 +76,7 @@ export class Auth0Client {
 			await this.exchangeCodeForToken(authCode, verifier);
 
 			console.log('[Auth0] Login successful');
-			vscode.window.showInformationMessage('Successfully logged in to Vibe Coding');
+			vscode.window.showInformationMessage('Successfully logged in to Reindeer Coder');
 			return true;
 		} catch (error) {
 			console.error('[Auth0] Login failed:', error);
@@ -247,7 +247,7 @@ export class Auth0Client {
 		await this.context.secrets.delete(Auth0Client.TOKEN_KEY);
 		await this.context.secrets.delete(Auth0Client.REFRESH_TOKEN_KEY);
 		await this.context.globalState.update(Auth0Client.TOKEN_EXPIRY_KEY, undefined);
-		vscode.window.showInformationMessage('Logged out from Vibe Coding');
+		vscode.window.showInformationMessage('Logged out from Reindeer Coder');
 	}
 
 	/**

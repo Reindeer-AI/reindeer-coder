@@ -216,7 +216,7 @@ export class TaskTreeProvider implements vscode.TreeDataProvider<TaskTreeItem> {
 		detailsItem.description = '';
 		detailsItem.tooltip = this.createDetailsTooltip(task);
 		detailsItem.command = {
-			command: 'vibeCoding.showTaskDetails',
+			command: 'reindeerCoder.showTaskDetails',
 			title: 'Show Task Details',
 			arguments: [task.id],
 		};
@@ -232,7 +232,7 @@ export class TaskTreeProvider implements vscode.TreeDataProvider<TaskTreeItem> {
 		viewTerminalAction.label = 'View Terminal Snapshot';
 		viewTerminalAction.iconPath = new vscode.ThemeIcon('terminal');
 		viewTerminalAction.command = {
-			command: 'vibeCoding.viewTerminalSnapshot',
+			command: 'reindeerCoder.viewTerminalSnapshot',
 			title: 'View Terminal Snapshot',
 			arguments: [task.id],
 		};
@@ -247,7 +247,7 @@ export class TaskTreeProvider implements vscode.TreeDataProvider<TaskTreeItem> {
 		refreshTerminalAction.label = 'Refresh Terminal Snapshot';
 		refreshTerminalAction.iconPath = new vscode.ThemeIcon('refresh');
 		refreshTerminalAction.command = {
-			command: 'vibeCoding.refreshTerminalSnapshot',
+			command: 'reindeerCoder.refreshTerminalSnapshot',
 			title: 'Refresh Terminal Snapshot',
 			arguments: [task.id],
 		};
@@ -262,7 +262,7 @@ export class TaskTreeProvider implements vscode.TreeDataProvider<TaskTreeItem> {
 		sendTextAction.label = 'Send Text to Terminal';
 		sendTextAction.iconPath = new vscode.ThemeIcon('edit');
 		sendTextAction.command = {
-			command: 'vibeCoding.sendTextToTerminal',
+			command: 'reindeerCoder.sendTextToTerminal',
 			title: 'Send Text to Terminal',
 			arguments: [task.id],
 		};
@@ -338,7 +338,7 @@ export class TaskTreeProvider implements vscode.TreeDataProvider<TaskTreeItem> {
 		const item = new TaskTreeItem(dummyTask, vscode.TreeItemCollapsibleState.None);
 		item.contextValue = 'login-prompt'; // Different context value to hide buttons
 		item.command = {
-			command: 'vibeCoding.login',
+			command: 'reindeerCoder.login',
 			title: 'Login',
 		};
 		item.iconPath = new vscode.ThemeIcon('sign-in');

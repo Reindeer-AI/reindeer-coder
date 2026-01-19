@@ -38,7 +38,7 @@ export class SSHFSManager {
 			}
 
 			// Determine local mount path
-			const localPath = options.localPath || path.join(os.tmpdir(), 'vibe-coding', taskId);
+			const localPath = options.localPath || path.join(os.tmpdir(), 'reindeer-coder', taskId);
 			this.outputChannel.appendLine(`[SSHFS] Local mount path: ${localPath}`);
 
 			// Create mount directory

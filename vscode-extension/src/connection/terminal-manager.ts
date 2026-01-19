@@ -31,7 +31,7 @@ export class TerminalManager {
 
 		// Create terminal
 		const terminal = vscode.window.createTerminal({
-			name: `Vibe: ${taskId}`,
+			name: `Coder: ${taskId}`,
 			shellPath: '/bin/bash',
 			shellArgs: ['-c', sshCommand],
 		});
