@@ -11,6 +11,9 @@ export type TaskStatus =
 
 // Metadata stored as JSON - for integration-specific data (Linear, Jira, etc.)
 export interface TaskMetadata {
+	// VM configuration (captured at task creation for stability)
+	vm_user?: string; // SSH user on the VM (e.g., 'agent', 'reindeer-vibe')
+	workspace_path?: string; // Workspace path on the VM (e.g., '/home/agent/workspace')
 	// Linear integration
 	linear?: {
 		issue_id: string;

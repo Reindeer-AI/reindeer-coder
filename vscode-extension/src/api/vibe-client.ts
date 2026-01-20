@@ -11,6 +11,21 @@ export type TaskStatus =
 	| 'stopped'
 	| 'deleted';
 
+export interface TaskMetadata {
+	// VM configuration (captured at task creation for stability)
+	vm_user?: string; // SSH user on the VM (e.g., 'agent', 'reindeer-vibe')
+	workspace_path?: string; // Workspace path on the VM (e.g., '/home/agent/workspace')
+	// Linear integration
+	linear?: {
+		issue_id: string;
+		issue_identifier: string;
+		issue_url: string;
+		issue_title: string;
+	};
+	// Extensible
+	[key: string]: unknown;
+}
+
 export interface Task {
 	id: string;
 	user_id: string;
@@ -31,7 +46,7 @@ export interface Task {
 	mr_url: string | null;
 	project_id: string | null;
 	mr_last_review_sha: string | null;
-	metadata: any | null;
+	metadata: TaskMetadata | null;
 	created_at: string;
 	updated_at: string;
 	needsAttention?: boolean;
