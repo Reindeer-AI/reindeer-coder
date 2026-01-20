@@ -8,6 +8,7 @@ import { configService } from '../config-service';
 import {
 	appendTerminalBuffer as appendTerminalBufferRaw,
 	getTaskById,
+	updateTaskMetadata,
 	updateTaskStatus,
 	updateTaskVmName,
 	updateTaskVmZone,
@@ -684,6 +685,11 @@ export async function startTask(taskId: string): Promise<void> {
 	await updateTaskVmName(taskId, vmName);
 	await updateTaskVmZone(taskId, zone);
 	await updateTaskStatus(taskId, 'provisioning');
+
+	// Save VM user and workspace path to task metadata (captured from config for stability)
+	const vmUser = await configService.get('vm.user', 'agent', 'VM_USER');
+	const workspacePath = `/home/${vmUser}/workspace`;
+	await updateTaskMetadata(taskId, { vm_user: vmUser, workspace_path: workspacePath });
 
 	// Log configuration
 	appendTerminalBuffer(taskId, `\r\n========================================\r\n`);

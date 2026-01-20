@@ -9,6 +9,7 @@ export interface SSHHostConfig {
 	zone: string;
 	project: string;
 	workspacePath: string;
+	vmUser: string;
 }
 
 export class SSHConfigManager {
@@ -19,14 +20,19 @@ export class SSHConfigManager {
 	}
 
 	/**
-	 * Copy local gcloud SSH public key to reindeer-vibe user's authorized_keys
-	 * This allows direct SSH access as reindeer-vibe user
+	 * Copy local gcloud SSH public key to VM user's authorized_keys
+	 * This allows direct SSH access as the specified user
 	 */
-	async authorizeKeyForVmUser(vmName: string, zone: string, project: string): Promise<void> {
+	async authorizeKeyForVmUser(
+		vmName: string,
+		zone: string,
+		project: string,
+		vmUser: string = 'reindeer-vibe'
+	): Promise<void> {
 		const { spawn } = require('node:child_process');
 
 		this.outputChannel.appendLine(
-			`\n[SSH-CONFIG] Authorizing SSH key for reindeer-vibe user on ${vmName}`
+			`\n[SSH-CONFIG] Authorizing SSH key for ${vmUser} user on ${vmName}`
 		);
 
 		// Read the local public key
@@ -42,17 +48,17 @@ export class SSHConfigManager {
 			throw new Error(errorMsg);
 		}
 
-		// Command to append the local user's public key to reindeer-vibe's authorized_keys
+		// Command to append the local user's public key to the VM user's authorized_keys
 		// This allows multiple users to connect with their own SSH keys
 		// We escape the public key properly for bash
 		const escapedKey = publicKey.replace(/'/g, "'\\''");
 		const copyKeyCommand = `
-			sudo mkdir -p /home/reindeer-vibe/.ssh && \
-			echo '${escapedKey}' | sudo tee -a /home/reindeer-vibe/.ssh/authorized_keys > /dev/null && \
-			sudo chown -R reindeer-vibe:reindeer-vibe /home/reindeer-vibe/.ssh && \
-			sudo chmod 700 /home/reindeer-vibe/.ssh && \
-			sudo chmod 600 /home/reindeer-vibe/.ssh/authorized_keys && \
-			echo "SSH key appended to reindeer-vibe authorized_keys"
+			sudo mkdir -p /home/${vmUser}/.ssh && \
+			echo '${escapedKey}' | sudo tee -a /home/${vmUser}/.ssh/authorized_keys > /dev/null && \
+			sudo chown -R ${vmUser}:${vmUser} /home/${vmUser}/.ssh && \
+			sudo chmod 700 /home/${vmUser}/.ssh && \
+			sudo chmod 600 /home/${vmUser}/.ssh/authorized_keys && \
+			echo "SSH key appended to ${vmUser} authorized_keys"
 		`;
 
 		return new Promise((resolve, reject) => {
@@ -155,15 +161,15 @@ export class SSHConfigManager {
 			}
 
 			// Build new host entry
-			// Connect directly as reindeer-vibe user using SSH key authentication
-			// The authorizeKeyForVmUser() method copies the gcloud SSH key to reindeer-vibe's authorized_keys
+			// Connect directly as VM user using SSH key authentication
+			// The authorizeKeyForVmUser() method copies the gcloud SSH key to the VM user's authorized_keys
 			const identityFile = path.join(os.homedir(), '.ssh', 'google_compute_engine');
 			const newHostEntry = [
 				'',
 				hostMarker,
 				`Host ${hostName}`,
 				`    HostName ${config.vmName}`,
-				`    User reindeer-vibe`,
+				`    User ${config.vmUser}`,
 				`    ProxyCommand gcloud compute start-iap-tunnel ${config.vmName} %p --listen-on-stdin --project=${config.project} --zone=${config.zone}`,
 				`    StrictHostKeyChecking no`,
 				`    UserKnownHostsFile /dev/null`,

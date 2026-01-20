@@ -29,6 +29,7 @@ interface TerminalVMInfo {
 	zone: string;
 	project: string;
 	taskId: string;
+	vmUser: string;
 }
 const terminalVMMap = new Map<vscode.Terminal, TerminalVMInfo>();
 
@@ -418,10 +419,18 @@ async function loadTasks(): Promise<void> {
  */
 async function _createWorkspaceConfig(
 	workspacePath: string,
-	options: { taskId: string; vmName: string; zone: string; project: string; tmuxSession: string }
+	options: {
+		taskId: string;
+		vmName: string;
+		zone: string;
+		project: string;
+		tmuxSession: string;
+		vmUser?: string;
+	}
 ): Promise<void> {
 	const fs = require('node:fs').promises;
 	const path = require('node:path');
+	const vmUser = options.vmUser || 'reindeer-vibe';
 
 	try {
 		// Create .vscode directory
@@ -435,7 +444,7 @@ async function _createWorkspaceConfig(
 				{
 					label: 'Connect to Reindeer Session',
 					type: 'shell',
-					command: `gcloud compute ssh ${options.vmName} --project=${options.project} --zone=${options.zone} --tunnel-through-iap --ssh-flag="-t" -- sudo -u reindeer-vibe tmux attach-session -t ${options.tmuxSession}`,
+					command: `gcloud compute ssh ${options.vmName} --project=${options.project} --zone=${options.zone} --tunnel-through-iap --ssh-flag="-t" -- sudo -u ${vmUser} tmux attach-session -t ${options.tmuxSession}`,
 					problemMatcher: [],
 					presentation: {
 						reveal: 'always',
@@ -534,12 +543,21 @@ async function connectToTask(
 				cancellable: false,
 			},
 			async (progress) => {
-				// Authorize user's SSH key for reindeer-vibe user
+				// Get VM user and workspace path from task metadata (or fallback to defaults)
+				const vmUser = taskDetails.metadata?.vm_user || 'reindeer-vibe';
+				const defaultWorkspacePath = `/home/${vmUser}/workspace`;
+				const workspacePath =
+					taskDetails.metadata?.workspace_path ||
+					taskDetails.workspace_path ||
+					defaultWorkspacePath;
+
+				// Authorize user's SSH key for VM user
 				progress.report({ message: 'Authorizing SSH key...' });
 				await sshConfigManager.authorizeKeyForVmUser(
 					taskDetails.vm_name!,
 					taskDetails.vm_zone!,
-					gcpProject
+					gcpProject,
+					vmUser
 				);
 
 				// Create/update SSH config entry
@@ -549,12 +567,13 @@ async function connectToTask(
 					vmName: taskDetails.vm_name!,
 					zone: taskDetails.vm_zone!,
 					project: gcpProject,
-					workspacePath: taskDetails.workspace_path || '/home/reindeer-vibe/workspace',
+					workspacePath,
+					vmUser,
 				});
 
 				// Build Remote-SSH URI
 				// Format: vscode-remote://ssh-remote+<host>/<path>
-				const remotePath = taskDetails.workspace_path || '/home/reindeer-vibe/workspace';
+				const remotePath = workspacePath;
 				const remoteUri = vscode.Uri.parse(`vscode-remote://ssh-remote+${hostName}${remotePath}`);
 
 				// Check if Remote-SSH extension is installed
@@ -615,7 +634,10 @@ async function connectTerminalOnly(taskId: string, gcpProject: string): Promise<
 		const shortId = taskId.substring(0, 8);
 		const tmuxSession = `vibe-${shortId}`;
 
-		// Build SSH command with correct flags and sudo to reindeer-vibe user
+		// Get VM user from task metadata (or fallback to default)
+		const vmUser = taskDetails.metadata?.vm_user || 'reindeer-vibe';
+
+		// Build SSH command with correct flags and sudo to VM user
 		const sshCommand = [
 			'gcloud',
 			'compute',
@@ -626,7 +648,7 @@ async function connectTerminalOnly(taskId: string, gcpProject: string): Promise<
 			'--tunnel-through-iap',
 			'--ssh-flag="-t"',
 			'--',
-			'sudo -u reindeer-vibe',
+			`sudo -u ${vmUser}`,
 			`tmux attach-session -t ${tmuxSession}`,
 		].join(' ');
 
@@ -648,6 +670,7 @@ async function connectTerminalOnly(taskId: string, gcpProject: string): Promise<
 			zone: taskDetails.vm_zone!,
 			project: gcpProject,
 			taskId,
+			vmUser,
 		});
 
 		terminal.show();
@@ -988,7 +1011,7 @@ async function switchTmuxSession(): Promise<void> {
 			'--tunnel-through-iap',
 			'--quiet',
 			'--command',
-			'"sudo -u reindeer-vibe tmux list-sessions"',
+			`"sudo -u ${vmInfo.vmUser} tmux list-sessions"`,
 		].join(' ');
 
 		outputChannel.appendLine(`[TMUX] Executing: ${listCommand}`);

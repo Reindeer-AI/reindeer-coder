@@ -6,6 +6,7 @@ export interface TerminalOptions {
 	project: string;
 	tmuxSession: string;
 	taskId: string;
+	vmUser?: string;
 }
 
 export class TerminalManager {
@@ -17,7 +18,7 @@ export class TerminalManager {
 	 * Connect to a remote tmux session via gcloud compute ssh
 	 */
 	async connect(options: TerminalOptions): Promise<vscode.Terminal> {
-		const { taskId, vmName, zone, project, tmuxSession } = options;
+		const { taskId, vmName, zone, project, tmuxSession, vmUser = 'reindeer-vibe' } = options;
 
 		// Check if terminal already exists
 		const existingTerminal = this.terminals.get(taskId);
@@ -27,7 +28,7 @@ export class TerminalManager {
 		}
 
 		// Build SSH command with tmux attach
-		const sshCommand = this.buildSSHCommand(vmName, zone, project, tmuxSession);
+		const sshCommand = this.buildSSHCommand(vmName, zone, project, tmuxSession, vmUser);
 
 		// Create terminal
 		const terminal = vscode.window.createTerminal({
@@ -89,9 +90,10 @@ export class TerminalManager {
 		vmName: string,
 		zone: string,
 		project: string,
-		tmuxSession: string
+		tmuxSession: string,
+		vmUser: string
 	): string {
-		// Command to SSH and attach to tmux session as reindeer-vibe user
+		// Command to SSH and attach to tmux session as the VM user
 		const sshCmd = [
 			'gcloud',
 			'compute',
@@ -102,7 +104,7 @@ export class TerminalManager {
 			'--tunnel-through-iap',
 			'--ssh-flag="-t"',
 			'--',
-			'sudo -u reindeer-vibe',
+			`sudo -u ${vmUser}`,
 			`tmux attach-session -t ${tmuxSession}`,
 		].join(' ');
 

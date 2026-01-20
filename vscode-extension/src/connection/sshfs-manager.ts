@@ -12,6 +12,7 @@ export interface MountOptions {
 	project: string;
 	remotePath: string;
 	localPath?: string;
+	vmUser?: string;
 }
 
 export class SSHFSManager {
@@ -186,10 +187,10 @@ export class SSHFSManager {
 	 * Build the SSHFS command using gcloud IAP tunnel
 	 */
 	private buildSSHFSCommand(options: MountOptions, localPath: string): string {
-		const { vmName, zone, project, remotePath } = options;
+		const { vmName, zone, project, remotePath, vmUser = 'reindeer-vibe' } = options;
 
-		// Use reindeer-vibe as the user (standard for Vibe Coding VMs)
-		const user = 'reindeer-vibe';
+		// Use the VM user from options (or fallback to default)
+		const user = vmUser;
 
 		// Determine SSH identity file path based on platform
 		const homeDir = os.homedir();
