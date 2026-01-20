@@ -57,7 +57,7 @@
 			},
 			{
 				"command": "reindeerCoder.connectTask",
-				"title": "Open Workspace",
+				"title": "Open Workspace (Remote-SSH)",
 				"icon": "$(folder-opened)"
 			},
 			{
@@ -156,7 +156,7 @@
 				"reindeerCoder.mountPath": {
 					"type": "string",
 					"default": "~/reindeer-coder-mounts",
-					"description": "Local path for SSHFS mounts (uses short task IDs as folder names)"
+					"description": "[Deprecated] This setting is no longer used as the extension now uses VSCode Remote-SSH instead of SSHFS"
 				}
 			}
 		}

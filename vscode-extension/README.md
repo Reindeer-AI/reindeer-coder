@@ -5,7 +5,7 @@ Connect to your Vibe Coding remote workspaces directly from Visual Studio Code.
 ## Features
 
 - **Task Browser**: View your active Vibe Coding tasks in the sidebar
-- **Remote Workspace**: Mount and browse remote VM filesystems using SSHFS
+- **Remote Workspace**: Connect to remote VM workspaces using VSCode Remote-SSH
 - **Terminal Connection**: Connect to running AI agent tmux sessions
 - **Secure Authentication**: OAuth2 PKCE flow with Auth0
 - **Seamless Integration**: Edit code while the AI agent works in parallel
@@ -23,10 +23,7 @@ Before using this extension, you need:
    gcloud auth login
    ```
 
-2. **SSHFS**: Platform-specific installation
-   - **macOS**: `brew install macfuse sshfs`
-   - **Linux**: `sudo apt-get install sshfs` (Debian/Ubuntu) or `sudo yum install sshfs` (RHEL/CentOS)
-   - **Windows**: Install [SSHFS-Win](https://github.com/winfsp/sshfs-win)
+2. **VSCode Remote-SSH Extension**: The extension will prompt you to install this automatically if not present
 
 3. **GCP IAP Access**: Ensure you have the `roles/iap.tunnelResourceAccessor` role for the project
 
@@ -53,16 +50,18 @@ Before using this extension, you need:
 
 ### 3. Connect to Task
 
-When you click a running task:
-1. The remote filesystem is mounted via SSHFS
-2. VS Code opens the mounted workspace folder
-3. A terminal opens and connects to the running tmux session
-4. You can now view/edit files while the AI agent works
+When you click the "Open Workspace" button on a running task:
+1. An SSH config entry is created in your `~/.ssh/config` file
+2. VS Code connects to the remote VM using the Remote-SSH extension
+3. A new VS Code window opens with the remote workspace
+4. You can now view/edit files directly on the remote VM
+
+Alternatively, click "Open Terminal" to only open a terminal connection without opening a workspace.
 
 ### 4. Disconnect
 
-- Close the terminal to disconnect
-- The filesystem will be automatically unmounted
+- Close the Remote-SSH window when done
+- The SSH config entry will remain for future connections
 
 ## Configuration
 
@@ -113,11 +112,13 @@ To use the same Auth0 application, add this callback URL in your Auth0 dashboard
 
 ## Troubleshooting
 
-### SSHFS mount fails
+### Remote-SSH connection fails
 
 - Verify gcloud is authenticated: `gcloud auth list`
 - Check IAP permissions: `gcloud projects get-iam-policy PROJECT_ID`
 - Ensure VM is running: `gcloud compute instances list`
+- Check SSH config entry: `cat ~/.ssh/config | grep reindeer`
+- Verify SSH keys exist: `ls -la ~/.ssh/google_compute_engine*`
 
 ### Terminal connection fails
 
@@ -164,7 +165,8 @@ vibe-coding-vscode/
 │   ├── views/
 │   │   └── task-tree-provider.ts  # Sidebar tree view
 │   └── connection/
-│       ├── sshfs-manager.ts   # Filesystem mounting
+│       ├── ssh-config-manager.ts # SSH config generation
+│       ├── sshfs-manager.ts   # [Deprecated] Legacy SSHFS support
 │       └── terminal-manager.ts # Terminal connection
 ├── package.json
 └── tsconfig.json
