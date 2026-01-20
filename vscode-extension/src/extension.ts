@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { type Task, VibeClient } from './api/vibe-client';
 import { Auth0Client } from './auth/auth0-client';
+import { SSHConfigManager } from './connection/ssh-config-manager';
 import { SSHFSManager } from './connection/sshfs-manager';
 import { TerminalManager } from './connection/terminal-manager';
 import { CreateTaskPanel } from './views/create-task-panel';
@@ -9,6 +10,7 @@ import { type TaskTreeItem, TaskTreeProvider } from './views/task-tree-provider'
 let auth0Client: Auth0Client;
 let vibeClient: VibeClient;
 let taskTreeProvider: TaskTreeProvider;
+let sshConfigManager: SSHConfigManager;
 let sshfsManager: SSHFSManager;
 let terminalManager: TerminalManager;
 let outputChannel: vscode.OutputChannel;
@@ -106,6 +108,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	// Initialize managers
 	outputChannel.appendLine('\n[INIT] Initializing managers...');
+	sshConfigManager = new SSHConfigManager(outputChannel);
 	sshfsManager = new SSHFSManager(outputChannel);
 	terminalManager = new TerminalManager(outputChannel);
 	outputChannel.appendLine('[INIT] Managers initialized');
@@ -411,8 +414,9 @@ async function loadTasks(): Promise<void> {
 
 /**
  * Create workspace configuration files for the mounted workspace
+ * @deprecated No longer used with Remote-SSH approach
  */
-async function createWorkspaceConfig(
+async function _createWorkspaceConfig(
 	workspacePath: string,
 	options: { taskId: string; vmName: string; zone: string; project: string; tmuxSession: string }
 ): Promise<void> {
@@ -501,12 +505,12 @@ function generateTaskFolderName(task: Task): string {
 }
 
 /**
- * Connect to a task (mount filesystem and open terminal)
+ * Connect to a task using VSCode Remote-SSH
  */
 async function connectToTask(
 	taskId: string,
 	gcpProject: string,
-	mountBasePath: string
+	_mountBasePath: string
 ): Promise<void> {
 	try {
 		outputChannel.appendLine(`Connecting to task ${taskId.substring(0, 8)}...`);
@@ -518,12 +522,9 @@ async function connectToTask(
 			throw new Error('Task does not have VM information');
 		}
 
-		// Use the same tmux session naming convention as the backend
-		const tmuxSession = `vibe-${taskId.substring(0, 8)}`;
-
-		// Generate meaningful folder name
+		// Generate meaningful folder name for display
 		const folderName = generateTaskFolderName(taskDetails);
-		outputChannel.appendLine(`Using mount folder name: ${folderName}`);
+		outputChannel.appendLine(`Task folder name: ${folderName}`);
 
 		// Show progress
 		await vscode.window.withProgress(
@@ -533,40 +534,60 @@ async function connectToTask(
 				cancellable: false,
 			},
 			async (progress) => {
-				// Mount filesystem
-				progress.report({ message: 'Mounting remote filesystem...' });
+				// Authorize user's SSH key for reindeer-vibe user
+				progress.report({ message: 'Authorizing SSH key...' });
+				await sshConfigManager.authorizeKeyForVmUser(
+					taskDetails.vm_name!,
+					taskDetails.vm_zone!,
+					gcpProject
+				);
 
-				// Expand tilde in mount path and use meaningful folder name
-				const expandedBasePath = mountBasePath.replace(/^~/, require('node:os').homedir());
-				const localPath = require('node:path').join(expandedBasePath, folderName);
-
-				const mountedPath = await sshfsManager.mount(taskId, {
-					vmName: taskDetails.vm_name!,
-					zone: taskDetails.vm_zone!,
-					project: gcpProject,
-					remotePath: taskDetails.workspace_path || '/home/reindeer-vibe/workspace',
-					localPath: localPath,
-				});
-
-				// Create VS Code workspace configuration with terminal task
-				progress.report({ message: 'Creating workspace configuration...' });
-				await createWorkspaceConfig(mountedPath, {
+				// Create/update SSH config entry
+				progress.report({ message: 'Updating SSH configuration...' });
+				const hostName = await sshConfigManager.addOrUpdateHost({
 					taskId,
 					vmName: taskDetails.vm_name!,
 					zone: taskDetails.vm_zone!,
 					project: gcpProject,
-					tmuxSession: tmuxSession,
+					workspacePath: taskDetails.workspace_path || '/home/reindeer-vibe/workspace',
 				});
 
-				// Open workspace in NEW window
-				progress.report({ message: 'Opening workspace...' });
-				const uri = vscode.Uri.file(mountedPath);
-				await vscode.commands.executeCommand('vscode.openFolder', uri, {
+				// Build Remote-SSH URI
+				// Format: vscode-remote://ssh-remote+<host>/<path>
+				const remotePath = taskDetails.workspace_path || '/home/reindeer-vibe/workspace';
+				const remoteUri = vscode.Uri.parse(`vscode-remote://ssh-remote+${hostName}${remotePath}`);
+
+				// Check if Remote-SSH extension is installed
+				// Try multiple possible extension IDs (MS VSCode, Cursor/Anysphere)
+				const remoteSshExtension =
+					vscode.extensions.getExtension('ms-vscode-remote.remote-ssh') ||
+					vscode.extensions.getExtension('ms-vscode.remote-server') ||
+					vscode.extensions.getExtension('anysphere.remote-ssh');
+
+				if (!remoteSshExtension) {
+					const install = await vscode.window.showErrorMessage(
+						'The Remote-SSH extension is required to open workspaces. Please install it first.',
+						'Install Remote-SSH'
+					);
+					if (install === 'Install Remote-SSH') {
+						await vscode.commands.executeCommand(
+							'workbench.extensions.installExtension',
+							'ms-vscode-remote.remote-ssh'
+						);
+					}
+					return;
+				}
+
+				// Open workspace in NEW window using Remote-SSH
+				progress.report({ message: 'Opening remote workspace...' });
+				outputChannel.appendLine(`[SSH] Opening remote URI: ${remoteUri.toString()}`);
+
+				await vscode.commands.executeCommand('vscode.openFolder', remoteUri, {
 					forceNewWindow: true,
 				});
 
 				vscode.window.showInformationMessage(
-					`Connected to ${folderName}. Use Terminal > Run Task > "Connect to Reindeer Session" to open the remote terminal.`
+					`Connected to ${folderName} via Remote-SSH. The workspace will open in a new window.`
 				);
 			}
 		);
@@ -640,14 +661,14 @@ async function connectTerminalOnly(taskId: string, gcpProject: string): Promise<
 }
 
 /**
- * Disconnect from a task (unmount filesystem and close terminal)
+ * Disconnect from a task (remove SSH config entry and close terminal)
  */
 async function disconnectFromTask(taskId: string): Promise<void> {
 	try {
 		outputChannel.appendLine(`Disconnecting from task ${taskId}...`);
 
-		// Unmount filesystem
-		await sshfsManager.unmount(taskId);
+		// Remove SSH config entry
+		await sshConfigManager.removeHost(taskId);
 
 		// Disconnect terminal
 		terminalManager.disconnect(taskId);
