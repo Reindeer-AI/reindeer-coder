@@ -12,6 +12,10 @@ build/
 .env.*
 !.env.example
 
+# Deployment config (contains secrets)
+scripts/deploy.config
+!scripts/deploy.config.example
+
 # IDE
 .vscode/
 .idea/

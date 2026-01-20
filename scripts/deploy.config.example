@@ -1,0 +1,148 @@
+#------------------------------------------------------------------------------
+# Reindeer Coder - Deployment Configuration
+#------------------------------------------------------------------------------
+# Copy this file to deploy.config and fill in your values:
+#   cp deploy.config.example deploy.config
+#
+# Or run in interactive mode:
+#   ./deploy.sh --interactive
+#------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
+# GCP Project Settings (REQUIRED)
+#------------------------------------------------------------------------------
+# Your GCP project ID. Will be created if it doesn't exist.
+GCP_PROJECT_ID="my-reindeer-project"
+
+# Billing account ID (required for new projects)
+# Find yours: gcloud billing accounts list
+GCP_BILLING_ACCOUNT=""
+
+# Region and zone for resources
+GCP_REGION="us-central1"
+GCP_ZONE="us-central1-a"
+
+#------------------------------------------------------------------------------
+# Auth0 Configuration (REQUIRED)
+#------------------------------------------------------------------------------
+# Create an Auth0 account at https://auth0.com if you don't have one
+# Then create a Single Page Application
+
+# Your Auth0 domain (e.g., myapp.us.auth0.com)
+AUTH0_DOMAIN=""
+
+# Application Client ID from Auth0 dashboard
+AUTH0_CLIENT_ID=""
+
+# API Audience - typically your app URL or a custom identifier
+AUTH0_AUDIENCE=""
+
+# Organization ID (optional - for Auth0 Organizations feature)
+AUTH0_ORG_ID=""
+
+#------------------------------------------------------------------------------
+# Application Settings
+#------------------------------------------------------------------------------
+# Cloud Run service name
+SERVICE_NAME="reindeer-coder"
+
+# Custom domain URL (leave empty to use auto-generated Cloud Run URL)
+APP_URL=""
+
+# Restrict users to specific email domain (e.g., "mycompany.com")
+# Leave empty to allow any authenticated user
+EMAIL_DOMAIN=""
+
+#------------------------------------------------------------------------------
+# Git Configuration
+#------------------------------------------------------------------------------
+# Git server URL
+GIT_BASE_URL="https://gitlab.com"
+
+# Git organization/group name for repositories
+GIT_ORG=""
+
+# GitLab API URL
+GITLAB_API_URL="https://gitlab.com/api/v4"
+
+# Git username for authentication (oauth2 for GitLab token auth)
+GIT_USER="oauth2"
+
+#------------------------------------------------------------------------------
+# VM Configuration
+#------------------------------------------------------------------------------
+# Machine type for coding VMs
+# Recommended: e2-standard-4 for good performance
+# Cost-conscious: e2-medium or e2-small
+VM_MACHINE_TYPE="e2-standard-4"
+
+# VM username
+VM_USER="vibe"
+
+# Network (leave as default unless you have custom VPC)
+GCP_NETWORK="default"
+
+#------------------------------------------------------------------------------
+# Cloud SQL Configuration
+#------------------------------------------------------------------------------
+# Instance name for Cloud SQL PostgreSQL
+CLOUDSQL_INSTANCE_NAME="reindeer-apps"
+
+# Machine tier (db-f1-micro for dev, db-g1-small+ for production)
+CLOUDSQL_TIER="db-f1-micro"
+
+# Storage size in GB
+CLOUDSQL_STORAGE_SIZE="10"
+
+# Database name
+DB_NAME="vibe_coding"
+
+#------------------------------------------------------------------------------
+# Cloud Run Configuration
+#------------------------------------------------------------------------------
+CLOUD_RUN_MEMORY="1Gi"
+CLOUD_RUN_CPU="2"
+CLOUD_RUN_MAX_INSTANCES="10"
+CLOUD_RUN_CONCURRENCY="80"
+CLOUD_RUN_TIMEOUT="300"
+
+#------------------------------------------------------------------------------
+# API Keys & Secrets (ALL OPTIONAL)
+#------------------------------------------------------------------------------
+# These secrets are stored in GCP Secret Manager.
+# If not provided, the following happens:
+#
+# - ANTHROPIC_API_KEY: Users must authenticate with Claude during sessions
+#   (they'll be prompted to login when the Claude CLI starts)
+#
+# - OPENAI_API_KEY: Codex CLI won't be available. Claude Code still works.
+#
+# - GITLAB_TOKEN: Only public repositories can be cloned. Private repos
+#   and merge request creation won't work.
+#
+# - LINEAR_API_KEY: Linear integration will be disabled. Tasks won't be
+#   auto-created from Linear issues.
+
+# Anthropic API Key for Claude Code (sk-ant-...)
+ANTHROPIC_API_KEY=""
+
+# OpenAI API Key for Codex CLI (sk-...)
+OPENAI_API_KEY=""
+
+# GitLab Personal Access Token (glpat-...)
+# Required scopes: api, read_api, read_repository, write_repository
+GITLAB_TOKEN=""
+
+# Linear API Key (lin_api_...)
+LINEAR_API_KEY=""
+
+#------------------------------------------------------------------------------
+# Service Accounts (auto-generated names, customize if needed)
+#------------------------------------------------------------------------------
+CLOUD_RUN_SA_NAME="reindeer-coder"
+VM_SA_NAME="reindeer-vm"
+
+#------------------------------------------------------------------------------
+# Artifact Registry
+#------------------------------------------------------------------------------
+ARTIFACT_REGISTRY_REPO="containers"
