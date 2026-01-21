@@ -15,7 +15,13 @@ import {
 } from '../db';
 import type { Task } from '../db/schema';
 import { getAnthropicApiKey } from '../secrets';
-import { connectToVM, type GcloudConnection } from './gcloud';
+import {
+	connectToVM,
+	copyToVM,
+	execOnVM,
+	execOnVMStreaming,
+	type GcloudConnection,
+} from './gcloud';
 
 /**
  * Extract a readable name from an email address
@@ -708,13 +714,6 @@ export async function startTask(taskId: string): Promise<void> {
 		const imageFamily = env.VM_IMAGE_FAMILY;
 		const imageProject = env.VM_IMAGE_PROJECT;
 
-		// Startup script to install coding CLIs
-		const startupScript = await generateStartupScript(task.coding_cli);
-
-		// Write startup script to temp file (required for systemd service context where /dev/stdin doesn't exist)
-		const startupScriptPath = join(tmpdir(), `vibe-startup-${taskId}.sh`);
-		writeFileSync(startupScriptPath, startupScript, { mode: 0o755 });
-
 		// Extract git user identity from task
 		const fallbackEmail = await configService.get(
 			'email.fallback_address',
@@ -742,7 +741,6 @@ export async function startTask(taskId: string): Promise<void> {
 			...(subnet ? [`--subnet=${subnet}`] : []),
 			'--tags=iap-ssh',
 			`--metadata=ANTHROPIC_API_KEY_SECRET=${env.ANTHROPIC_API_KEY_SECRET || ''},OPENAI_API_KEY_SECRET=${env.OPENAI_API_KEY_SECRET || ''},GOOGLE_API_KEY_SECRET=${env.GOOGLE_API_KEY_SECRET || ''},GITLAB_TOKEN_SECRET=${env.GITLAB_TOKEN_SECRET || ''},SECRET_IMPERSONATE_SA=${env.SECRET_IMPERSONATE_SA || ''},GIT_USER=${env.GIT_USER},GIT_USER_NAME=${gitUserName},GIT_USER_EMAIL=${gitUserEmail}`,
-			`--metadata-from-file=startup-script=${startupScriptPath}`,
 			`--labels=vibe-coding=true`,
 			'--format=json',
 		];
@@ -773,17 +771,9 @@ export async function startTask(taskId: string): Promise<void> {
 				appendTerminalBuffer(taskId, normalized);
 			});
 			proc.on('error', (err) => {
-				// Clean up temp file on error
-				try {
-					unlinkSync(startupScriptPath);
-				} catch {}
 				reject(err);
 			});
 			proc.on('close', (code) => {
-				// Clean up temp file
-				try {
-					unlinkSync(startupScriptPath);
-				} catch {}
 				if (code === 0) {
 					resolve();
 				} else {
@@ -798,10 +788,7 @@ export async function startTask(taskId: string): Promise<void> {
 			taskId,
 			`[system] Waiting for VM to boot and SSH to become available...\r\n`
 		);
-		appendTerminalBuffer(
-			taskId,
-			`[system] (This can take 1-3 minutes while the startup script runs)\r\n\r\n`
-		);
+		appendTerminalBuffer(taskId, `[system] (This typically takes 30-90 seconds)\r\n\r\n`);
 
 		// Wait for SSH to become available - VMs need time to boot and start sshd
 		// Try connecting multiple times with increasing delays
@@ -868,10 +855,11 @@ export async function startTask(taskId: string): Promise<void> {
 				});
 
 				if (testResult) {
-					appendTerminalBuffer(
-						taskId,
-						`\r\n[system] SSH connection established successfully!\r\n\r\n`
-					);
+					appendTerminalBuffer(taskId, '\r\n[system] SSH connection established!\r\n\r\n');
+
+					// Execute startup script via SSH with streaming output
+					await deployAndExecuteStartupScript(taskId, vmName, task.coding_cli, zone, project);
+
 					break;
 				} else {
 					appendTerminalBuffer(taskId, `[ssh] Connection test failed, will retry...\r\n\r\n`);
@@ -892,7 +880,7 @@ export async function startTask(taskId: string): Promise<void> {
 		await updateTaskStatus(taskId, 'initializing');
 		appendTerminalBuffer(taskId, `\r\n========================================\r\n`);
 		appendTerminalBuffer(taskId, `[system] Establishing persistent SSH connection...\r\n`);
-		appendTerminalBuffer(taskId, `[system] VM startup scripts are running in background...\r\n`);
+		appendTerminalBuffer(taskId, `[system] VM setup complete, initializing workspace...\r\n`);
 		appendTerminalBuffer(taskId, `========================================\r\n\r\n`);
 
 		conn = connectToVM(vmName, zone, project);
@@ -980,16 +968,11 @@ export async function startTask(taskId: string): Promise<void> {
 			statusAfter?: string;
 		}> = [
 			{ cmd: `cd ~`, desc: 'Changing to home directory' },
-			// Wait for startup script to complete (check for node availability)
+			// Verify CLI installation (startup script already completed via SSH)
 			{
-				cmd: `echo "Waiting for startup script..." && while ! command -v node &> /dev/null; do sleep 5; echo "Waiting for node..."; done && echo "Node is ready!"`,
-				desc: 'Waiting for startup script to complete',
+				cmd: `source ~/.bashrc && node --version && ${task.coding_cli === 'claude-code' ? 'claude --version' : task.coding_cli === 'gemini' ? 'gemini --version' : 'codex --version'}`,
+				desc: 'Verifying CLI installation',
 				statusAfter: 'cloning',
-			},
-			// Wait specifically for CLI installation to complete (source .bashrc to get updated PATH)
-			{
-				cmd: `source ~/.bashrc && ${task.coding_cli === 'claude-code' ? `while ! command -v claude &> /dev/null; do sleep 3; echo "Waiting for Claude Code..."; done && echo "Claude Code is ready!"` : task.coding_cli === 'gemini' ? `while ! command -v gemini &> /dev/null; do sleep 3; echo "Waiting for Gemini CLI..."; done && echo "Gemini CLI is ready!"` : `while ! command -v codex &> /dev/null; do sleep 3; echo "Waiting for Codex CLI..."; done && echo "Codex CLI is ready!"`}`,
-				desc: `Waiting for ${task.coding_cli} CLI installation`,
 			},
 			// Reload tmux config now that startup script has completed
 			{
@@ -1479,6 +1462,81 @@ chown -R ${vmUser}:${vmUser} /home/${vmUser}/.codex
 	};
 
 	return baseScript + (cliScripts[codingCli] || '');
+}
+
+/**
+ * Deploy and execute startup script on VM via SSH
+ * Provides real-time streaming output to terminal buffer
+ */
+async function deployAndExecuteStartupScript(
+	taskId: string,
+	vmName: string,
+	codingCli: string,
+	zone: string,
+	project: string
+): Promise<void> {
+	// 1. Generate startup script
+	const startupScript = await generateStartupScript(codingCli);
+
+	// 2. Write to local temp file
+	const localScriptPath = join(tmpdir(), `vibe-startup-${taskId}.sh`);
+	writeFileSync(localScriptPath, startupScript, { mode: 0o755 });
+
+	try {
+		// 3. Copy to VM
+		const remoteScriptPath = '/tmp/vibe-startup.sh';
+		appendTerminalBuffer(taskId, '[system] Copying startup script to VM...\r\n');
+		await copyToVM(vmName, localScriptPath, remoteScriptPath, zone, project);
+
+		// 4. Make executable
+		await execOnVM(vmName, `chmod +x ${remoteScriptPath}`, zone, project);
+
+		// 5. Execute with streaming
+		appendTerminalBuffer(taskId, '[system] Executing startup script...\r\n\r\n');
+
+		const startTime = Date.now();
+
+		const result = await execOnVMStreaming(
+			vmName,
+			`sudo ${remoteScriptPath}`,
+			(data: string, stream: 'stdout' | 'stderr') => {
+				const prefix = stream === 'stderr' ? '[startup:err] ' : '[startup] ';
+				const normalized = data.replace(/\r?\n/g, '\r\n');
+				const lines = normalized.split('\r\n');
+				lines.forEach((line) => {
+					if (line.trim()) {
+						appendTerminalBuffer(taskId, `${prefix}${line}\r\n`);
+					}
+				});
+			},
+			zone,
+			project,
+			300000 // 5 minute timeout
+		);
+
+		const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+
+		if (result.exitCode !== 0) {
+			appendTerminalBuffer(
+				taskId,
+				`\r\n[error] Startup script failed with exit code ${result.exitCode}\r\n`
+			);
+			throw new Error(`Startup script failed with exit code ${result.exitCode}`);
+		}
+
+		appendTerminalBuffer(
+			taskId,
+			`\r\n[system] Startup script completed successfully in ${duration}s\r\n\r\n`
+		);
+
+		// 6. Cleanup remote script
+		await execOnVM(vmName, `rm -f ${remoteScriptPath}`, zone, project);
+	} finally {
+		// 7. Cleanup local temp file
+		try {
+			unlinkSync(localScriptPath);
+		} catch {}
+	}
 }
 
 /**
