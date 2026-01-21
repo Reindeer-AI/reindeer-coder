@@ -4,6 +4,7 @@ import { Auth0Client } from './auth/auth0-client';
 import { SSHConfigManager } from './connection/ssh-config-manager';
 import { SSHFSManager } from './connection/sshfs-manager';
 import { TerminalManager } from './connection/terminal-manager';
+import { TunnelManager } from './connection/tunnel-manager';
 import { CreateTaskPanel } from './views/create-task-panel';
 import { type TaskTreeItem, TaskTreeProvider } from './views/task-tree-provider';
 
@@ -13,6 +14,7 @@ let taskTreeProvider: TaskTreeProvider;
 let sshConfigManager: SSHConfigManager;
 let sshfsManager: SSHFSManager;
 let terminalManager: TerminalManager;
+let tunnelManager: TunnelManager;
 let outputChannel: vscode.OutputChannel;
 
 // Track snapshot terminals by task ID
@@ -112,6 +114,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	sshConfigManager = new SSHConfigManager(outputChannel);
 	sshfsManager = new SSHFSManager(outputChannel);
 	terminalManager = new TerminalManager(outputChannel);
+	tunnelManager = new TunnelManager(outputChannel);
 	outputChannel.appendLine('[INIT] Managers initialized');
 
 	// Initialize tree view
@@ -354,6 +357,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		dispose: async () => {
 			await sshfsManager.unmountAll();
 			terminalManager.disconnectAll();
+			tunnelManager.closeAllTunnels();
 			outputChannel.dispose();
 		},
 	});
@@ -936,51 +940,15 @@ async function testFromLocalBrowser(taskId: string, gcpProject: string): Promise
 			throw new Error('Task does not have VM information');
 		}
 
-		// Check for existing tunnel terminal
-		const existingTunnel = vscode.window.terminals.find(
-			(t) => t.name.includes('Tunnel') && t.name.includes(taskDetails.vm_name!)
-		);
-
-		if (existingTunnel) {
-			const action = await vscode.window.showWarningMessage(
-				'A tunnel terminal already exists for this VM. Do you want to close it and create a new one?',
-				'Close and Recreate',
-				'Cancel'
-			);
-
-			if (action === 'Close and Recreate') {
-				existingTunnel.dispose();
-			} else {
-				// Open browser anyway
-				await vscode.env.openExternal(vscode.Uri.parse('http://localhost:3715'));
-				return;
-			}
-		}
-
-		// Build tunnel command
-		const tunnelCommand = [
-			'gcloud',
-			'compute',
-			'ssh',
-			taskDetails.vm_name,
-			`--project=${gcpProject}`,
-			`--zone=${taskDetails.vm_zone}`,
-			'--tunnel-through-iap',
-			'--',
-			'-N -L 3715:127.0.0.1:5173',
-		].join(' ');
-
-		outputChannel.appendLine(`[COMMAND] Creating tunnel: ${tunnelCommand}`);
-
-		// Create terminal in terminal area (not editor)
-		const terminal = vscode.window.createTerminal({
-			name: `Tunnel - ${taskDetails.vm_name}`,
-			shellPath: '/bin/bash',
-			shellArgs: ['-c', tunnelCommand],
-			location: vscode.TerminalLocation.Panel,
+		// Create tunnel using TunnelManager (handles port conflicts automatically)
+		await tunnelManager.createTunnel({
+			vmName: taskDetails.vm_name,
+			zone: taskDetails.vm_zone,
+			project: gcpProject,
+			localPort: 3715,
+			remotePort: 5173,
+			taskId,
 		});
-
-		terminal.show();
 
 		// Wait a moment for tunnel to establish
 		await new Promise((resolve) => setTimeout(resolve, 2000));

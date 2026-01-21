@@ -200,3 +200,71 @@ export async function copyToVM(
 		});
 	});
 }
+
+/**
+ * Execute a command on a VM with streaming output
+ * Calls onData callback for each chunk of stdout/stderr
+ */
+export async function execOnVMStreaming(
+	vmName: string,
+	command: string,
+	onData: (data: string, stream: 'stdout' | 'stderr') => void,
+	zone?: string,
+	project?: string,
+	timeout?: number
+): Promise<{ exitCode: number }> {
+	const gcpZone = zone || env.GCP_ZONE || 'us-central1-a';
+	const gcpProject = project || env.GCP_PROJECT_ID;
+
+	if (!gcpProject) {
+		throw new Error('GCP_PROJECT_ID environment variable is required');
+	}
+
+	const args = [
+		'compute',
+		'ssh',
+		vmName,
+		`--zone=${gcpZone}`,
+		`--project=${gcpProject}`,
+		'--tunnel-through-iap',
+		'--quiet',
+		'--command',
+		command,
+	];
+
+	return new Promise((resolve, reject) => {
+		const proc = spawn('gcloud', args, {
+			stdio: ['pipe', 'pipe', 'pipe'],
+		});
+
+		let timeoutId: NodeJS.Timeout | undefined;
+
+		// Set up timeout if specified
+		if (timeout) {
+			timeoutId = setTimeout(() => {
+				proc.kill('SIGTERM');
+				reject(new Error(`Command timed out after ${timeout}ms`));
+			}, timeout);
+		}
+
+		// Stream stdout
+		proc.stdout?.on('data', (data: Buffer) => {
+			onData(data.toString(), 'stdout');
+		});
+
+		// Stream stderr
+		proc.stderr?.on('data', (data: Buffer) => {
+			onData(data.toString(), 'stderr');
+		});
+
+		proc.on('error', (error) => {
+			if (timeoutId) clearTimeout(timeoutId);
+			reject(error);
+		});
+
+		proc.on('close', (code: number | null) => {
+			if (timeoutId) clearTimeout(timeoutId);
+			resolve({ exitCode: code || 0 });
+		});
+	});
+}
