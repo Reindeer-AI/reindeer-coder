@@ -317,4 +317,35 @@ export class VibeClient {
 			throw new Error(`Failed to create task: ${error}`);
 		}
 	}
+
+	/**
+	 * Complete a task (marks as completed and stops VM)
+	 */
+	async completeTask(taskId: string): Promise<Task> {
+		try {
+			console.log(`[VibeClient] Completing task ${taskId}...`);
+			const response = await this.client.put<{ task: Task }>(`/api/tasks/${taskId}`, {
+				status: 'completed',
+			});
+			console.log(`[VibeClient] Task completed: ${taskId}`);
+			return response.data.task;
+		} catch (error) {
+			console.error(`[VibeClient] Failed to complete task ${taskId}:`, error);
+			throw new Error(`Failed to complete task: ${error}`);
+		}
+	}
+
+	/**
+	 * Delete a task (marks as deleted and stops VM)
+	 */
+	async deleteTask(taskId: string): Promise<void> {
+		try {
+			console.log(`[VibeClient] Deleting task ${taskId}...`);
+			await this.client.delete(`/api/tasks/${taskId}`);
+			console.log(`[VibeClient] Task deleted: ${taskId}`);
+		} catch (error) {
+			console.error(`[VibeClient] Failed to delete task ${taskId}:`, error);
+			throw new Error(`Failed to delete task: ${error}`);
+		}
+	}
 }

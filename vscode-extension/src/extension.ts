@@ -318,6 +318,24 @@ export async function activate(context: vscode.ExtensionContext) {
 		)
 	);
 
+	context.subscriptions.push(
+		vscode.commands.registerCommand('reindeerCoder.openTaskWebUI', async (taskId: string) => {
+			await openTaskWebUI(taskId);
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('reindeerCoder.completeTask', async (taskId: string) => {
+			await completeTask(taskId);
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('reindeerCoder.deleteTask', async (taskId: string) => {
+			await deleteTask(taskId);
+		})
+	);
+
 	// Note: Tree item clicks now handled by inline buttons instead of selection event
 
 	// Listen for terminal close events to clean up VM mapping
@@ -1056,6 +1074,110 @@ async function switchTmuxSession(): Promise<void> {
 	} catch (error) {
 		outputChannel.appendLine(`[TMUX] Failed to switch session: ${error}`);
 		vscode.window.showErrorMessage(`Failed to switch tmux session: ${error}`);
+	}
+}
+
+/**
+ * Open task in web UI
+ */
+async function openTaskWebUI(taskId: string): Promise<void> {
+	try {
+		outputChannel.appendLine(`\n[COMMAND] Opening task ${taskId.substring(0, 8)} in web UI`);
+
+		const webUrl = `https://vibe.reindeerlabs.ai/tasks/${taskId}`;
+		await vscode.env.openExternal(vscode.Uri.parse(webUrl));
+
+		vscode.window.showInformationMessage(`Opened task in web browser`);
+		outputChannel.appendLine(`[COMMAND] Opened ${webUrl}`);
+	} catch (error) {
+		outputChannel.appendLine(`[ERROR] Failed to open task in web UI: ${error}`);
+		vscode.window.showErrorMessage(`Failed to open task in web UI: ${error}`);
+	}
+}
+
+/**
+ * Complete a task
+ */
+async function completeTask(taskId: string): Promise<void> {
+	try {
+		outputChannel.appendLine(`\n[COMMAND] Complete task ${taskId.substring(0, 8)}`);
+
+		// Show confirmation dialog
+		const confirmation = await vscode.window.showWarningMessage(
+			'Are you sure you want to mark this task as completed?',
+			{ modal: true },
+			'Yes, Complete'
+		);
+
+		if (confirmation !== 'Yes, Complete') {
+			outputChannel.appendLine('[COMMAND] User cancelled task completion');
+			return;
+		}
+
+		// Show progress
+		await vscode.window.withProgress(
+			{
+				location: vscode.ProgressLocation.Notification,
+				title: 'Completing task...',
+				cancellable: false,
+			},
+			async (progress) => {
+				progress.report({ message: 'Updating task status...' });
+				await vibeClient.completeTask(taskId);
+
+				progress.report({ message: 'Refreshing task list...' });
+				await loadTasks();
+
+				vscode.window.showInformationMessage('Task completed successfully');
+				outputChannel.appendLine(`[COMMAND] Task ${taskId.substring(0, 8)} completed`);
+			}
+		);
+	} catch (error) {
+		outputChannel.appendLine(`[ERROR] Failed to complete task: ${error}`);
+		vscode.window.showErrorMessage(`Failed to complete task: ${error}`);
+	}
+}
+
+/**
+ * Delete a task
+ */
+async function deleteTask(taskId: string): Promise<void> {
+	try {
+		outputChannel.appendLine(`\n[COMMAND] Delete task ${taskId.substring(0, 8)}`);
+
+		// Show confirmation dialog with stronger warning
+		const confirmation = await vscode.window.showWarningMessage(
+			'Are you sure you want to delete this task? This action cannot be undone.',
+			{ modal: true },
+			'Yes, Delete'
+		);
+
+		if (confirmation !== 'Yes, Delete') {
+			outputChannel.appendLine('[COMMAND] User cancelled task deletion');
+			return;
+		}
+
+		// Show progress
+		await vscode.window.withProgress(
+			{
+				location: vscode.ProgressLocation.Notification,
+				title: 'Deleting task...',
+				cancellable: false,
+			},
+			async (progress) => {
+				progress.report({ message: 'Removing task...' });
+				await vibeClient.deleteTask(taskId);
+
+				progress.report({ message: 'Refreshing task list...' });
+				await loadTasks();
+
+				vscode.window.showInformationMessage('Task deleted successfully');
+				outputChannel.appendLine(`[COMMAND] Task ${taskId.substring(0, 8)} deleted`);
+			}
+		);
+	} catch (error) {
+		outputChannel.appendLine(`[ERROR] Failed to delete task: ${error}`);
+		vscode.window.showErrorMessage(`Failed to delete task: ${error}`);
 	}
 }
 
