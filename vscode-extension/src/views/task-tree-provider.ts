@@ -268,6 +268,54 @@ export class TaskTreeProvider implements vscode.TreeDataProvider<TaskTreeItem> {
 		};
 		children.push(sendTextAction);
 
+		// Add Open in Web UI action
+		const openWebUIAction = new TaskTreeItem(
+			task,
+			vscode.TreeItemCollapsibleState.None,
+			'action',
+			'open-web-ui'
+		);
+		openWebUIAction.label = 'Open in Web UI';
+		openWebUIAction.iconPath = new vscode.ThemeIcon('globe');
+		openWebUIAction.command = {
+			command: 'reindeerCoder.openTaskWebUI',
+			title: 'Open in Web UI',
+			arguments: [task.id],
+		};
+		children.push(openWebUIAction);
+
+		// Add Complete Task action
+		const completeTaskAction = new TaskTreeItem(
+			task,
+			vscode.TreeItemCollapsibleState.None,
+			'action',
+			'complete-task'
+		);
+		completeTaskAction.label = 'Complete Task';
+		completeTaskAction.iconPath = new vscode.ThemeIcon('check');
+		completeTaskAction.command = {
+			command: 'reindeerCoder.completeTask',
+			title: 'Complete Task',
+			arguments: [task.id],
+		};
+		children.push(completeTaskAction);
+
+		// Add Delete Task action
+		const deleteTaskAction = new TaskTreeItem(
+			task,
+			vscode.TreeItemCollapsibleState.None,
+			'action',
+			'delete-task'
+		);
+		deleteTaskAction.label = 'Delete Task';
+		deleteTaskAction.iconPath = new vscode.ThemeIcon('trash');
+		deleteTaskAction.command = {
+			command: 'reindeerCoder.deleteTask',
+			title: 'Delete Task',
+			arguments: [task.id],
+		};
+		children.push(deleteTaskAction);
+
 		return children;
 	}
 
