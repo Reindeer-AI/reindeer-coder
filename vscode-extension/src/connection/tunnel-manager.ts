@@ -48,7 +48,7 @@ export class TunnelManager {
 							return { inUse: true, pid };
 						}
 					}
-				} catch (error) {
+				} catch (_error) {
 					// lsof returns non-zero exit code if port is not in use
 					return { inUse: false };
 				}
