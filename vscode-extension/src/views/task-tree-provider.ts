@@ -222,52 +222,6 @@ export class TaskTreeProvider implements vscode.TreeDataProvider<TaskTreeItem> {
 		};
 		children.push(detailsItem);
 
-		// Add action items
-		const viewTerminalAction = new TaskTreeItem(
-			task,
-			vscode.TreeItemCollapsibleState.None,
-			'action',
-			'view-terminal'
-		);
-		viewTerminalAction.label = 'View Terminal Snapshot';
-		viewTerminalAction.iconPath = new vscode.ThemeIcon('terminal');
-		viewTerminalAction.command = {
-			command: 'reindeerCoder.viewTerminalSnapshot',
-			title: 'View Terminal Snapshot',
-			arguments: [task.id],
-		};
-		children.push(viewTerminalAction);
-
-		const refreshTerminalAction = new TaskTreeItem(
-			task,
-			vscode.TreeItemCollapsibleState.None,
-			'action',
-			'refresh-terminal'
-		);
-		refreshTerminalAction.label = 'Refresh Terminal Snapshot';
-		refreshTerminalAction.iconPath = new vscode.ThemeIcon('refresh');
-		refreshTerminalAction.command = {
-			command: 'reindeerCoder.refreshTerminalSnapshot',
-			title: 'Refresh Terminal Snapshot',
-			arguments: [task.id],
-		};
-		children.push(refreshTerminalAction);
-
-		const sendTextAction = new TaskTreeItem(
-			task,
-			vscode.TreeItemCollapsibleState.None,
-			'action',
-			'send-text'
-		);
-		sendTextAction.label = 'Send Text to Terminal';
-		sendTextAction.iconPath = new vscode.ThemeIcon('edit');
-		sendTextAction.command = {
-			command: 'reindeerCoder.sendTextToTerminal',
-			title: 'Send Text to Terminal',
-			arguments: [task.id],
-		};
-		children.push(sendTextAction);
-
 		// Add Open in Web UI action
 		const openWebUIAction = new TaskTreeItem(
 			task,
