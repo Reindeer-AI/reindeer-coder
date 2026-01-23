@@ -145,6 +145,7 @@ export class TaskTreeProvider implements vscode.TreeDataProvider<TaskTreeItem> {
 
 	private tasks: Task[] = [];
 	private authenticated: boolean = false;
+	private configured: boolean = true;
 
 	/**
 	 * Refresh the tree view
@@ -170,6 +171,14 @@ export class TaskTreeProvider implements vscode.TreeDataProvider<TaskTreeItem> {
 	}
 
 	/**
+	 * Set configuration status
+	 */
+	setConfigured(configured: boolean): void {
+		this.configured = configured;
+		this.refresh();
+	}
+
+	/**
 	 * Get tree item
 	 */
 	getTreeItem(element: TaskTreeItem): vscode.TreeItem {
@@ -189,7 +198,12 @@ export class TaskTreeProvider implements vscode.TreeDataProvider<TaskTreeItem> {
 			return [];
 		}
 
-		// Root level - show tasks
+		// Root level - check configuration first
+		if (!this.configured) {
+			return [this.createConfigurePrompt()];
+		}
+
+		// Then check authentication
 		if (!this.authenticated) {
 			return [this.createLoginPrompt()];
 		}
@@ -306,6 +320,49 @@ export class TaskTreeProvider implements vscode.TreeDataProvider<TaskTreeItem> {
 		tooltip.appendMarkdown(`**Updated:** ${new Date(task.updated_at).toLocaleString()}`);
 
 		return tooltip;
+	}
+
+	/**
+	 * Create a configure server prompt tree item
+	 */
+	private createConfigurePrompt(): TaskTreeItem {
+		const dummyTask: Task = {
+			id: 'configure-prompt',
+			user_id: '',
+			user_email: '',
+			repository: '',
+			base_branch: '',
+			feature_branch: null,
+			task_description: 'Configure Server URL',
+			coding_cli: 'claude-code',
+			system_prompt: null,
+			status: 'pending',
+			vm_name: null,
+			vm_zone: null,
+			vm_external_ip: null,
+			terminal_buffer: null,
+			terminal_file_path: null,
+			mr_iid: null,
+			mr_url: null,
+			project_id: null,
+			mr_last_review_sha: null,
+			metadata: null,
+			created_at: new Date().toISOString(),
+			updated_at: new Date().toISOString(),
+		};
+
+		const item = new TaskTreeItem(dummyTask, vscode.TreeItemCollapsibleState.None);
+		item.contextValue = 'configure-prompt';
+		item.command = {
+			command: 'reindeerCoder.configureServer',
+			title: 'Configure Server',
+		};
+		item.iconPath = new vscode.ThemeIcon('settings-gear');
+		item.description = 'Click to set server URL';
+		item.tooltip = new vscode.MarkdownString(
+			'**Server URL Required**\n\nClick to configure the Reindeer Coder server URL.\n\nYou can also configure this in:\n- Settings → Extensions → Reindeer Coder\n- Command Palette → "Reindeer Coder: Configure Server"'
+		);
+		return item;
 	}
 
 	/**

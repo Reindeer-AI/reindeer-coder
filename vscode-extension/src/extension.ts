@@ -102,21 +102,37 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	// Get server URL from configuration
 	const config = vscode.workspace.getConfiguration('reindeerCoder');
-	let serverUrl = config.get<string>('serverUrl', '');
+	const serverUrl = config.get<string>('serverUrl', '');
 
-	// If no server URL configured, prompt the user
+	// Initialize tree view early so it's available even without config
+	outputChannel.appendLine('\n[UI] Initializing tree view...');
+	taskTreeProvider = new TaskTreeProvider();
+	const treeView = vscode.window.createTreeView('reindeerCoderTasks', {
+		treeDataProvider: taskTreeProvider,
+	});
+	context.subscriptions.push(treeView);
+	outputChannel.appendLine('[UI] Tree view initialized');
+
+	// Register configure command early so it's always available
+	registerConfigureCommand(context, config);
+
+	// If no server URL configured, show the configure prompt
 	if (!serverUrl) {
-		outputChannel.appendLine('\n[CONFIG] No server URL configured, prompting user...');
-		serverUrl = await promptForServerUrl(config);
-		if (!serverUrl) {
-			const errorMsg =
-				'Server URL is required. Please configure it in settings or run the "Configure Server" command.';
-			outputChannel.appendLine(`\n[ERROR] ${errorMsg}`);
-			vscode.window.showErrorMessage(`Reindeer Coder: ${errorMsg}`);
-			// Register configure command even if we can't continue
-			registerConfigureCommand(context, config);
-			return;
-		}
+		outputChannel.appendLine('\n[CONFIG] No server URL configured, showing configure prompt...');
+		taskTreeProvider.setConfigured(false);
+
+		// Show a helpful message with a button to configure
+		vscode.window
+			.showInformationMessage(
+				'Reindeer Coder: Server URL not configured. Configure it to get started.',
+				'Configure Server'
+			)
+			.then((selection) => {
+				if (selection === 'Configure Server') {
+					vscode.commands.executeCommand('reindeerCoder.configureServer');
+				}
+			});
+		return;
 	}
 
 	outputChannel.appendLine('\n[CONFIG] Loading configuration from server...');
@@ -137,8 +153,14 @@ export async function activate(context: vscode.ExtensionContext) {
 	} catch (error) {
 		const errorMsg = `Failed to fetch configuration from server: ${error}`;
 		outputChannel.appendLine(`\n[ERROR] ${errorMsg}`);
-		vscode.window.showErrorMessage(`Reindeer Coder: ${errorMsg}`);
-		registerConfigureCommand(context, config);
+		taskTreeProvider.setConfigured(false);
+		vscode.window
+			.showErrorMessage(`Reindeer Coder: ${errorMsg}`, 'Configure Server')
+			.then((selection) => {
+				if (selection === 'Configure Server') {
+					vscode.commands.executeCommand('reindeerCoder.configureServer');
+				}
+			});
 		return;
 	}
 
@@ -192,15 +214,6 @@ export async function activate(context: vscode.ExtensionContext) {
 	terminalManager = new TerminalManager(outputChannel);
 	tunnelManager = new TunnelManager(outputChannel);
 	outputChannel.appendLine('[INIT] Managers initialized');
-
-	// Initialize tree view
-	outputChannel.appendLine('\n[UI] Initializing tree view...');
-	taskTreeProvider = new TaskTreeProvider();
-	const treeView = vscode.window.createTreeView('reindeerCoderTasks', {
-		treeDataProvider: taskTreeProvider,
-	});
-	context.subscriptions.push(treeView);
-	outputChannel.appendLine('[UI] Tree view initialized');
 
 	// Check authentication status and load tasks
 	outputChannel.appendLine('\n[AUTH] Checking authentication status...');
@@ -259,9 +272,6 @@ export async function activate(context: vscode.ExtensionContext) {
 	// });
 
 	// Register commands
-	// Register configure server command
-	registerConfigureCommand(context, config);
-
 	context.subscriptions.push(
 		vscode.commands.registerCommand('reindeerCoder.login', async () => {
 			outputChannel.appendLine('\n[COMMAND] Login command triggered');

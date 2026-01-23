@@ -2,7 +2,7 @@
 	"name": "reindeer-coder",
 	"displayName": "Reindeer Coder",
 	"description": "Connect to your Reindeer Coder remote workspaces",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"publisher": "reindeer-ai",
 	"icon": "resources/icon.png",
 	"engines": {
