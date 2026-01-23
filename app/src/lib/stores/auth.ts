@@ -13,7 +13,7 @@ export const user = writable<ExtendedUser | null>(null);
 export const authToken = writable<string | null>(null);
 export const authLoading = writable(true);
 
-export async function initAuth0(): Promise<void> {
+export async function initAuth0(autoRedirect = true): Promise<void> {
 	if (!browser) return;
 
 	try {
@@ -46,13 +46,30 @@ export async function initAuth0(): Promise<void> {
 				authToken.set(token);
 			} catch (err) {
 				console.error('Failed to get token:', err);
-				// User might not have access to the org
+				// User might not have access to the org - redirect to login
 				user.set({ ...userData, accessDenied: true } as ExtendedUser);
 				isAuthenticated.set(false);
+				if (autoRedirect) {
+					await auth0Client.loginWithRedirect();
+					return;
+				}
 			}
+		} else if (autoRedirect) {
+			// Not authenticated - auto redirect to login
+			await auth0Client.loginWithRedirect();
+			return;
 		}
 	} catch (err) {
 		console.error('Auth0 init failed:', err);
+		// On auth error, try to redirect to login
+		if (autoRedirect && auth0Client) {
+			try {
+				await auth0Client.loginWithRedirect();
+				return;
+			} catch {
+				// Ignore redirect errors
+			}
+		}
 	} finally {
 		authLoading.set(false);
 	}

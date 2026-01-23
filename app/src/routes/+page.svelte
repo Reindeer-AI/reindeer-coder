@@ -2,7 +2,7 @@
 import { onMount } from 'svelte';
 import CreateTaskModal from '$lib/components/CreateTaskModal.svelte';
 import TaskList from '$lib/components/TaskList.svelte';
-import { authToken, initAuth0, isAuthenticated, login, logout, user } from '$lib/stores/auth';
+import { initAuth0, isAuthenticated, logout, user } from '$lib/stores/auth';
 
 // Runtime env vars from layout server load
 let { data } = $props();
@@ -86,30 +86,12 @@ onMount(async () => {
 
 	<!-- Main Content -->
 	<main class="max-w-7xl mx-auto px-6 py-8">
-		{#if loading}
-			<div class="flex items-center justify-center h-64">
-				<div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-reindeer-green"></div>
-			</div>
-		{:else if !$isAuthenticated}
-			<!-- Login Screen -->
+		{#if loading || !$isAuthenticated}
+			<!-- Loading / Redirecting to login -->
 			<div class="flex flex-col items-center justify-center h-[60vh] text-center">
 				<img src="/reindeer-logo-bot.png" alt="Reindeer" class="w-24 h-24 rounded-2xl mb-6" />
-				<h2 class="text-3xl font-bold text-gray-900 mb-4">Welcome to Reindeer Code</h2>
-				<p class="text-gray-600 mb-8 max-w-md">
-					Remote AI-powered coding agents. Spawn VMs, run Claude Code, Gemini, or Codex on your repositories.
-				</p>
-				{#if $user?.accessDenied}
-					<div class="bg-red-50 border border-red-200 rounded-lg px-6 py-4 mb-6">
-						<p class="text-red-700">Access denied. You don't have permission to use this app.</p>
-						<p class="text-red-500 text-sm mt-1">Email: {$user?.email}</p>
-					</div>
-				{/if}
-				<button
-					onclick={() => login()}
-					class="px-8 py-3 bg-reindeer-green hover:bg-reindeer-green-dark text-white font-medium rounded-lg transition-colors"
-				>
-					Sign in with Auth0
-				</button>
+				<div class="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-reindeer-green mb-4"></div>
+				<p class="text-gray-600">Redirecting to login...</p>
 			</div>
 		{:else}
 			<!-- Dashboard -->
