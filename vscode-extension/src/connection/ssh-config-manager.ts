@@ -27,7 +27,7 @@ export class SSHConfigManager {
 		vmName: string,
 		zone: string,
 		project: string,
-		vmUser: string = 'reindeer-vibe'
+		vmUser: string
 	): Promise<void> {
 		const { spawn } = require('node:child_process');
 

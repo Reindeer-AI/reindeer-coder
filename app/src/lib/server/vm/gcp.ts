@@ -1,5 +1,6 @@
 // @ts-expect-error - Optional dependency, only needed for direct VM management
 import { InstancesClient, type protos } from '@google-cloud/compute';
+import { configService } from '../config-service';
 import type { Task } from '../db/schema';
 
 const compute = new InstancesClient();
@@ -13,7 +14,7 @@ const IMAGE_PROJECT = process.env.VM_IMAGE_PROJECT;
  * Create a new VM instance for a coding task
  */
 export async function createVM(name: string, zone: string, task: Task): Promise<void> {
-	const startupScript = generateStartupScript(task);
+	const startupScript = await generateStartupScript(task);
 
 	const instance: protos.google.cloud.compute.v1.IInstance = {
 		name,
@@ -79,7 +80,10 @@ export async function createVM(name: string, zone: string, task: Task): Promise<
 /**
  * Generate startup script for VM
  */
-function generateStartupScript(_task: Task): string {
+async function generateStartupScript(_task: Task): Promise<string> {
+	const fallbackEmail = await configService.get('email.fallback_address', 'agent@example.com');
+	const vmUser = await configService.get('vm.user', 'agent');
+
 	return `#!/bin/bash
 set -e
 
@@ -91,16 +95,16 @@ apt-get install -y git curl nodejs npm python3 python3-pip
 curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
 apt-get install -y nodejs
 
-# Create vibe user
-useradd -m -s /bin/bash vibe || true
-mkdir -p /home/vibe/.ssh
-cp /root/.ssh/authorized_keys /home/vibe/.ssh/ 2>/dev/null || true
-chown -R vibe:vibe /home/vibe/.ssh
-chmod 700 /home/vibe/.ssh
-chmod 600 /home/vibe/.ssh/authorized_keys 2>/dev/null || true
+# Create agent user
+useradd -m -s /bin/bash ${vmUser} || true
+mkdir -p /home/${vmUser}/.ssh
+cp /root/.ssh/authorized_keys /home/${vmUser}/.ssh/ 2>/dev/null || true
+chown -R ${vmUser}:${vmUser} /home/${vmUser}/.ssh
+chmod 700 /home/${vmUser}/.ssh
+chmod 600 /home/${vmUser}/.ssh/authorized_keys 2>/dev/null || true
 
 # Set up environment variables for the agent
-cat >> /home/vibe/.bashrc << 'EOF'
+cat >> /home/${vmUser}/.bashrc << 'EOF'
 export ANTHROPIC_API_KEY="${process.env.ANTHROPIC_API_KEY || ''}"
 export GOOGLE_API_KEY="${process.env.GOOGLE_API_KEY || ''}"
 export OPENAI_API_KEY="${process.env.OPENAI_API_KEY || ''}"
@@ -108,13 +112,13 @@ export PATH="$HOME/.claude/bin:$HOME/.local/bin:$PATH"
 EOF
 
 # Configure git
-sudo -u vibe git config --global user.email "vibe@reindeer.ai"
-sudo -u vibe git config --global user.name "Vibe Coding Agent"
+sudo -u ${vmUser} git config --global user.email "${fallbackEmail}"
+sudo -u ${vmUser} git config --global user.name "Coding Agent"
 
 # Signal that VM is ready
 touch /tmp/vibe_ready
 
-echo "Vibe VM setup complete"
+echo "VM setup complete"
 `;
 }
 

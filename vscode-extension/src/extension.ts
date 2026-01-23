@@ -1,5 +1,10 @@
 import * as vscode from 'vscode';
-import { type Task, VibeClient } from './api/vibe-client';
+import {
+	type ExtensionConfig,
+	fetchExtensionConfig,
+	type Task,
+	VibeClient,
+} from './api/vibe-client';
 import { Auth0Client } from './auth/auth0-client';
 import { SSHConfigManager } from './connection/ssh-config-manager';
 import { SSHFSManager } from './connection/sshfs-manager';
@@ -16,6 +21,7 @@ let sshfsManager: SSHFSManager;
 let terminalManager: TerminalManager;
 let tunnelManager: TunnelManager;
 let outputChannel: vscode.OutputChannel;
+let extensionConfig: ExtensionConfig;
 
 // Track SSH terminal connections to VMs
 interface TerminalVMInfo {
@@ -26,6 +32,62 @@ interface TerminalVMInfo {
 	vmUser: string;
 }
 const terminalVMMap = new Map<vscode.Terminal, TerminalVMInfo>();
+
+/**
+ * Prompt user to enter server URL
+ */
+async function promptForServerUrl(
+	config: vscode.WorkspaceConfiguration
+): Promise<string | undefined> {
+	const serverUrl = await vscode.window.showInputBox({
+		prompt: 'Enter the Reindeer Coder server URL',
+		placeHolder: 'https://your-server.example.com',
+		validateInput: (value) => {
+			if (!value) {
+				return 'Server URL is required';
+			}
+			try {
+				new URL(value);
+				return null;
+			} catch {
+				return 'Please enter a valid URL';
+			}
+		},
+	});
+
+	if (serverUrl) {
+		// Save to user settings
+		await config.update('serverUrl', serverUrl, vscode.ConfigurationTarget.Global);
+	}
+
+	return serverUrl;
+}
+
+/**
+ * Register the configure server command
+ */
+function registerConfigureCommand(
+	context: vscode.ExtensionContext,
+	config: vscode.WorkspaceConfiguration
+) {
+	context.subscriptions.push(
+		vscode.commands.registerCommand('reindeerCoder.configureServer', async () => {
+			const serverUrl = await promptForServerUrl(config);
+			if (serverUrl) {
+				vscode.window
+					.showInformationMessage(
+						'Server URL configured. Please reload the window to apply changes.',
+						'Reload'
+					)
+					.then((selection) => {
+						if (selection === 'Reload') {
+							vscode.commands.executeCommand('workbench.action.reloadWindow');
+						}
+					});
+			}
+		})
+	);
+}
 
 export async function activate(context: vscode.ExtensionContext) {
 	console.log('Reindeer Coder extension is now active');
@@ -38,29 +100,51 @@ export async function activate(context: vscode.ExtensionContext) {
 	outputChannel.appendLine(`Activation time: ${new Date().toISOString()}`);
 	outputChannel.appendLine('='.repeat(80));
 
-	// Get configuration
+	// Get server URL from configuration
 	const config = vscode.workspace.getConfiguration('reindeerCoder');
-	const apiUrl = config.get<string>('apiUrl', 'https://vibe.reindeerlabs.ai');
-	const auth0Domain = config.get<string>('auth0Domain', 'dev-0d0uyl2iqc17144b.us.auth0.com');
-	const auth0ClientId = config.get<string>('auth0ClientId', 'i6QxH7zvtkkm5pD1iCS4mcIavVXhuOiZ');
-	const auth0Audience = config.get<string>('auth0Audience', 'https://vibe.reindeerlabs.ai');
-	const auth0OrganizationId = config.get<string>('auth0OrganizationId', 'org_9WU9bq88J0jAPjmM');
-	const gcpProject = config.get<string>('gcpProject', 'reindeer-vibe');
-	const mountPath = config.get<string>('mountPath', '~/reindeer-coder-mounts');
+	let serverUrl = config.get<string>('serverUrl', '');
 
-	outputChannel.appendLine('\n[CONFIG] Loading configuration...');
-	outputChannel.appendLine(`  API URL: ${apiUrl}`);
-	outputChannel.appendLine(`  Auth0 Domain: ${auth0Domain}`);
-	outputChannel.appendLine(`  Auth0 Client ID: ${auth0ClientId}`);
-	outputChannel.appendLine(`  Auth0 Audience: ${auth0Audience}`);
-	outputChannel.appendLine(`  Auth0 Organization: ${auth0OrganizationId || '(none)'}`);
-	outputChannel.appendLine(`  GCP Project: ${gcpProject}`);
-	outputChannel.appendLine(`  Mount Path: ${mountPath}`);
+	// If no server URL configured, prompt the user
+	if (!serverUrl) {
+		outputChannel.appendLine('\n[CONFIG] No server URL configured, prompting user...');
+		serverUrl = await promptForServerUrl(config);
+		if (!serverUrl) {
+			const errorMsg =
+				'Server URL is required. Please configure it in settings or run the "Configure Server" command.';
+			outputChannel.appendLine(`\n[ERROR] ${errorMsg}`);
+			vscode.window.showErrorMessage(`Reindeer Coder: ${errorMsg}`);
+			// Register configure command even if we can't continue
+			registerConfigureCommand(context, config);
+			return;
+		}
+	}
 
-	// Validate Auth0 configuration
-	if (!auth0ClientId) {
-		const errorMsg =
-			'Auth0 Client ID is not configured. Please set reindeerCoder.auth0ClientId in settings.';
+	outputChannel.appendLine('\n[CONFIG] Loading configuration from server...');
+	outputChannel.appendLine(`  Server URL: ${serverUrl}`);
+
+	// Fetch configuration from server
+	try {
+		extensionConfig = await fetchExtensionConfig(serverUrl);
+		outputChannel.appendLine('[CONFIG] Server configuration loaded successfully');
+		outputChannel.appendLine(`  Auth0 Domain: ${extensionConfig.auth0.domain}`);
+		outputChannel.appendLine(`  Auth0 Client ID: ${extensionConfig.auth0.clientId}`);
+		outputChannel.appendLine(`  Auth0 Audience: ${extensionConfig.auth0.audience}`);
+		outputChannel.appendLine(
+			`  Auth0 Organization: ${extensionConfig.auth0.organizationId || '(none)'}`
+		);
+		outputChannel.appendLine(`  GCP Project: ${extensionConfig.gcp.project}`);
+		outputChannel.appendLine(`  VM User: ${extensionConfig.vm.user}`);
+	} catch (error) {
+		const errorMsg = `Failed to fetch configuration from server: ${error}`;
+		outputChannel.appendLine(`\n[ERROR] ${errorMsg}`);
+		vscode.window.showErrorMessage(`Reindeer Coder: ${errorMsg}`);
+		registerConfigureCommand(context, config);
+		return;
+	}
+
+	// Validate configuration
+	if (!extensionConfig.auth0.clientId) {
+		const errorMsg = 'Server did not return Auth0 configuration. Please check server settings.';
 		outputChannel.appendLine(`\n[ERROR] ${errorMsg}`);
 		vscode.window.showErrorMessage(`Reindeer Coder: ${errorMsg}`);
 		return;
@@ -68,21 +152,21 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	outputChannel.appendLine('\n[AUTH] Initializing Auth0 client...');
 
-	// Initialize Auth0 client
+	// Initialize Auth0 client with server-provided configuration
 	auth0Client = new Auth0Client(
 		context,
-		auth0Domain,
-		auth0ClientId,
-		auth0Audience,
-		auth0OrganizationId || undefined
+		extensionConfig.auth0.domain,
+		extensionConfig.auth0.clientId,
+		extensionConfig.auth0.audience,
+		extensionConfig.auth0.organizationId
 	);
 
 	outputChannel.appendLine('[AUTH] Auth0 client initialized');
 
-	// Initialize Reindeer Coder API client
-	outputChannel.appendLine('\n[API] Initializing Reindeer Coder API client...');
-	outputChannel.appendLine(`  API URL: ${apiUrl}`);
-	vibeClient = new VibeClient(apiUrl, () => auth0Client.getAccessToken());
+	// Initialize API client
+	outputChannel.appendLine('\n[API] Initializing API client...');
+	outputChannel.appendLine(`  Server URL: ${serverUrl}`);
+	vibeClient = new VibeClient(serverUrl, () => auth0Client.getAccessToken());
 
 	// Set up auth error handler to automatically trigger login on 401
 	vibeClient.setAuthErrorHandler(async () => {
@@ -175,6 +259,9 @@ export async function activate(context: vscode.ExtensionContext) {
 	// });
 
 	// Register commands
+	// Register configure server command
+	registerConfigureCommand(context, config);
+
 	context.subscriptions.push(
 		vscode.commands.registerCommand('reindeerCoder.login', async () => {
 			outputChannel.appendLine('\n[COMMAND] Login command triggered');
@@ -223,14 +310,16 @@ export async function activate(context: vscode.ExtensionContext) {
 				outputChannel.appendLine(`Token Preview: ${token.substring(0, 20)}...`);
 			}
 
-			outputChannel.appendLine(`\nConfiguration:`);
-			const config = vscode.workspace.getConfiguration('reindeerCoder');
-			outputChannel.appendLine(`  API URL: ${config.get('apiUrl')}`);
-			outputChannel.appendLine(`  Auth0 Domain: ${config.get('auth0Domain')}`);
-			outputChannel.appendLine(`  Auth0 Client ID: ${config.get('auth0ClientId')}`);
-			outputChannel.appendLine(`  Auth0 Audience: ${config.get('auth0Audience')}`);
-			outputChannel.appendLine(`  Auth0 Organization: ${config.get('auth0OrganizationId')}`);
-			outputChannel.appendLine(`  GCP Project: ${config.get('gcpProject')}`);
+			outputChannel.appendLine(`\nServer Configuration:`);
+			outputChannel.appendLine(`  Server URL: ${serverUrl}`);
+			outputChannel.appendLine(`  Auth0 Domain: ${extensionConfig.auth0.domain}`);
+			outputChannel.appendLine(`  Auth0 Client ID: ${extensionConfig.auth0.clientId}`);
+			outputChannel.appendLine(`  Auth0 Audience: ${extensionConfig.auth0.audience}`);
+			outputChannel.appendLine(
+				`  Auth0 Organization: ${extensionConfig.auth0.organizationId || '(none)'}`
+			);
+			outputChannel.appendLine(`  GCP Project: ${extensionConfig.gcp.project}`);
+			outputChannel.appendLine(`  VM User: ${extensionConfig.vm.user}`);
 
 			outputChannel.appendLine('='.repeat(80));
 
@@ -240,7 +329,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(
 		vscode.commands.registerCommand('reindeerCoder.connectTask', async (item: TaskTreeItem) => {
-			await connectToTask(item.task.id, gcpProject, mountPath);
+			await connectToTask(item.task.id);
 		})
 	);
 
@@ -248,7 +337,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand(
 			'reindeerCoder.connectTerminalOnly',
 			async (item: TaskTreeItem) => {
-				await connectTerminalOnly(item.task.id, gcpProject);
+				await connectTerminalOnly(item.task.id);
 			}
 		)
 	);
@@ -274,10 +363,16 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.commands.registerCommand('reindeerCoder.createNewTask', async () => {
 			outputChannel.appendLine('\n[COMMAND] Create new task command triggered');
-			CreateTaskPanel.createOrShow(context.extensionUri, auth0Client, vibeClient, async () => {
-				outputChannel.appendLine('[COMMAND] Task created, refreshing task list');
-				await loadTasks();
-			});
+			CreateTaskPanel.createOrShow(
+				context.extensionUri,
+				auth0Client,
+				vibeClient,
+				extensionConfig,
+				async () => {
+					outputChannel.appendLine('[COMMAND] Task created, refreshing task list');
+					await loadTasks();
+				}
+			);
 		})
 	);
 
@@ -285,7 +380,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand(
 			'reindeerCoder.testFromLocalBrowser',
 			async (item: TaskTreeItem) => {
-				await testFromLocalBrowser(item.task.id, gcpProject);
+				await testFromLocalBrowser(item.task.id);
 			}
 		)
 	);
@@ -420,7 +515,7 @@ async function _createWorkspaceConfig(
 ): Promise<void> {
 	const fs = require('node:fs').promises;
 	const path = require('node:path');
-	const vmUser = options.vmUser || 'reindeer-vibe';
+	const vmUser = options.vmUser || extensionConfig.vm.user;
 
 	try {
 		// Create .vscode directory
@@ -432,7 +527,7 @@ async function _createWorkspaceConfig(
 			version: '2.0.0',
 			tasks: [
 				{
-					label: 'Connect to Reindeer Session',
+					label: 'Connect to Agent Session',
 					type: 'shell',
 					command: `gcloud compute ssh ${options.vmName} --project=${options.project} --zone=${options.zone} --tunnel-through-iap --ssh-flag="-t" -- sudo -u ${vmUser} tmux attach-session -t ${options.tmuxSession}`,
 					problemMatcher: [],
@@ -506,11 +601,7 @@ function generateTaskFolderName(task: Task): string {
 /**
  * Connect to a task using VSCode Remote-SSH
  */
-async function connectToTask(
-	taskId: string,
-	gcpProject: string,
-	_mountBasePath: string
-): Promise<void> {
+async function connectToTask(taskId: string): Promise<void> {
 	try {
 		outputChannel.appendLine(`Connecting to task ${taskId.substring(0, 8)}...`);
 
@@ -525,6 +616,9 @@ async function connectToTask(
 		const folderName = generateTaskFolderName(taskDetails);
 		outputChannel.appendLine(`Task folder name: ${folderName}`);
 
+		const gcpProject = extensionConfig.gcp.project;
+		const defaultVmUser = extensionConfig.vm.user;
+
 		// Show progress
 		await vscode.window.withProgress(
 			{
@@ -533,8 +627,8 @@ async function connectToTask(
 				cancellable: false,
 			},
 			async (progress) => {
-				// Get VM user and workspace path from task metadata (or fallback to defaults)
-				const vmUser = taskDetails.metadata?.vm_user || 'reindeer-vibe';
+				// Get VM user and workspace path from task metadata (or fallback to server defaults)
+				const vmUser = taskDetails.metadata?.vm_user || defaultVmUser;
 				const defaultWorkspacePath = `/home/${vmUser}/workspace`;
 				const workspacePath =
 					taskDetails.metadata?.workspace_path ||
@@ -609,7 +703,7 @@ async function connectToTask(
 /**
  * Connect to task terminal only (no workspace mount, opens in current window)
  */
-async function connectTerminalOnly(taskId: string, gcpProject: string): Promise<void> {
+async function connectTerminalOnly(taskId: string): Promise<void> {
 	try {
 		outputChannel.appendLine(`Opening terminal for task ${taskId.substring(0, 8)}...`);
 
@@ -620,12 +714,15 @@ async function connectTerminalOnly(taskId: string, gcpProject: string): Promise<
 			throw new Error('Task does not have VM information');
 		}
 
+		const gcpProject = extensionConfig.gcp.project;
+		const defaultVmUser = extensionConfig.vm.user;
+
 		// Use the same tmux session naming convention as the backend
 		const shortId = taskId.substring(0, 8);
 		const tmuxSession = `vibe-${shortId}`;
 
-		// Get VM user from task metadata (or fallback to default)
-		const vmUser = taskDetails.metadata?.vm_user || 'reindeer-vibe';
+		// Get VM user from task metadata (or fallback to server default)
+		const vmUser = taskDetails.metadata?.vm_user || defaultVmUser;
 
 		// Build SSH command with correct flags and sudo to VM user
 		const sshCommand = [
@@ -730,7 +827,7 @@ async function showTaskDetails(taskId: string): Promise<void> {
 /**
  * Test from local browser - creates tunnel and opens VSCode simple browser
  */
-async function testFromLocalBrowser(taskId: string, gcpProject: string): Promise<void> {
+async function testFromLocalBrowser(taskId: string): Promise<void> {
 	try {
 		outputChannel.appendLine(
 			`\n[COMMAND] Test from local browser for task ${taskId.substring(0, 8)}`
@@ -742,6 +839,8 @@ async function testFromLocalBrowser(taskId: string, gcpProject: string): Promise
 		if (!taskDetails.vm_name || !taskDetails.vm_zone) {
 			throw new Error('Task does not have VM information');
 		}
+
+		const gcpProject = extensionConfig.gcp.project;
 
 		// Create tunnel using TunnelManager (handles port conflicts automatically)
 		await tunnelManager.createTunnel({
@@ -878,7 +977,7 @@ async function openTaskWebUI(taskId: string): Promise<void> {
 	try {
 		outputChannel.appendLine(`\n[COMMAND] Opening task ${taskId.substring(0, 8)} in web UI`);
 
-		const webUrl = `https://vibe.reindeerlabs.ai/tasks/${taskId}`;
+		const webUrl = `${extensionConfig.app.url}/tasks/${taskId}`;
 		await vscode.env.openExternal(vscode.Uri.parse(webUrl));
 
 		vscode.window.showInformationMessage(`Opened task in web browser`);

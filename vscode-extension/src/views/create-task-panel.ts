@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { VibeClient } from '../api/vibe-client';
+import type { ExtensionConfig, VibeClient } from '../api/vibe-client';
 import type { Auth0Client } from '../auth/auth0-client';
 
 export class CreateTaskPanel {
@@ -11,6 +11,7 @@ export class CreateTaskPanel {
 		panel: vscode.WebviewPanel,
 		private readonly auth0Client: Auth0Client,
 		private readonly vibeClient: VibeClient,
+		private readonly extensionConfig: ExtensionConfig,
 		private readonly onTaskCreated: () => void
 	) {
 		this._panel = panel;
@@ -46,6 +47,7 @@ export class CreateTaskPanel {
 		_extensionUri: vscode.Uri,
 		auth0Client: Auth0Client,
 		vibeClient: VibeClient,
+		extensionConfig: ExtensionConfig,
 		onTaskCreated: () => void
 	) {
 		const column = vscode.ViewColumn.One;
@@ -71,6 +73,7 @@ export class CreateTaskPanel {
 			panel,
 			auth0Client,
 			vibeClient,
+			extensionConfig,
 			onTaskCreated
 		);
 	}
@@ -93,32 +96,17 @@ export class CreateTaskPanel {
 			const userEmail = userInfo?.email || 'unknown';
 			const userName = userInfo?.name || 'User';
 
-			const defaultSystemPrompt = `You are a software engineer at Reindeer AI. Follow these guidelines:
+			// Get default system prompt from server config and personalize it
+			let defaultSystemPrompt = this.extensionConfig.agent.defaultSystemPrompt;
 
-1. Use ${userEmail} as your identity for git commits and merge requests. Use the name "Claude Code on behalf of ${userName}". Configure git before making any commits:
+			// Add user-specific git configuration instructions
+			const gitConfigInstructions = `
+Use ${userEmail} as your identity for git commits and merge requests. Use the name "Claude Code on behalf of ${userName}". Configure git before making any commits:
    git config user.email "${userEmail}"
    git config user.name "Claude Code on behalf of ${userName}"
-2. Write clean, well-documented code following the project's existing patterns and conventions
-3. When making code changes, create a new feature branch from the base branch
-4. After completing the task, use the glab CLI to create a detailed merge request that includes:
-   - A clear title describing the change
-   - A summary of what was changed and why
-   - Testing steps or verification instructions
-   - Any relevant context or considerations for reviewers
-   Example: glab mr create --title "feat: Add new feature" --description "## Summary\\n..."
-5. Commit messages should be descriptive and follow conventional commit format
-6. Work autonomously - make reasonable decisions without asking for confirmation. Only ask questions if absolutely critical information is missing that would prevent completing the task
-7. If you encounter minor blockers, try alternative approaches before escalating
-8. If you are building a web application (node / Svelte), run the server locally in development mode. There should be a background task with the web server running on http://localhost:5173
-9. Environment setup: If there's a .env.example file, create .env from it (cp .env.example .env) and ask the user if any additional environment variables need to be configured
 
-Reindeer AI Repositories (clone commands using pre-configured credentials):
-- Frontend / Control Plane API:
-  git clone https://$GIT_USER:$GITLAB_TOKEN@gitlab.com/reindeerai/app.git
-- Backend / AI:
-  git clone https://$GIT_USER:$GITLAB_TOKEN@gitlab.com/reindeerai/workflows.git
-- Infrastructure as Code (Terraform):
-  git clone https://$GIT_USER:$GITLAB_TOKEN@gitlab.com/reindeerai/cloud-infrastructure.git`;
+`;
+			defaultSystemPrompt = gitConfigInstructions + defaultSystemPrompt;
 
 			this._panel.webview.postMessage({
 				command: 'defaultSystemPromptFetched',

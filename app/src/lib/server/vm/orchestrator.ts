@@ -1296,10 +1296,12 @@ if [ -n "$GITLAB_TOKEN" ]; then
 fi
 
 # Configure git identity from metadata for ${vmUser} user
-GIT_USER_NAME=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/attributes/GIT_USER_NAME" -H "Metadata-Flavor: Google" || echo "Vibe Coding Agent")
-GIT_USER_EMAIL=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/attributes/GIT_USER_EMAIL" -H "Metadata-Flavor: Google" || echo "agent@reindeer.ai")
+GIT_USER_NAME=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/attributes/GIT_USER_NAME" -H "Metadata-Flavor: Google" || echo "Coding Agent")
+GIT_USER_EMAIL=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/attributes/GIT_USER_EMAIL" -H "Metadata-Flavor: Google")
 su - ${vmUser} -c "git config --global user.name '$GIT_USER_NAME'"
-su - ${vmUser} -c "git config --global user.email '$GIT_USER_EMAIL'"
+if [ -n "$GIT_USER_EMAIL" ]; then
+    su - ${vmUser} -c "git config --global user.email '$GIT_USER_EMAIL'"
+fi
 
 `;
 

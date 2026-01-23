@@ -279,9 +279,13 @@ export class Auth0Client {
 			}
 
 			const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
+
+			// Try standard claims first, then check for custom namespace claims
+			// The custom namespace is based on the audience URL
+			const namespacePrefix = `${this.audience}/`;
 			return {
-				email: payload.email || payload['https://vibe.reindeerlabs.ai/email'],
-				name: payload.name || payload['https://vibe.reindeerlabs.ai/name'],
+				email: payload.email || payload[`${namespacePrefix}email`],
+				name: payload.name || payload[`${namespacePrefix}name`],
 			};
 		} catch (error) {
 			console.error('[Auth0] Failed to get user info:', error);

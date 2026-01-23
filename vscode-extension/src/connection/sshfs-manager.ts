@@ -187,10 +187,10 @@ export class SSHFSManager {
 	 * Build the SSHFS command using gcloud IAP tunnel
 	 */
 	private buildSSHFSCommand(options: MountOptions, localPath: string): string {
-		const { vmName, zone, project, remotePath, vmUser = 'reindeer-vibe' } = options;
+		const { vmName, zone, project, remotePath, vmUser } = options;
 
-		// Use the VM user from options (or fallback to default)
-		const user = vmUser;
+		// Use the VM user from options (should be provided by server config)
+		const user = vmUser || 'agent';
 
 		// Determine SSH identity file path based on platform
 		const homeDir = os.homedir();

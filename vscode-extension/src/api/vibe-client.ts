@@ -1,5 +1,40 @@
 import axios, { type AxiosInstance } from 'axios';
 
+/**
+ * Extension configuration returned by the server
+ */
+export interface ExtensionConfig {
+	auth0: {
+		domain: string;
+		clientId: string;
+		audience: string;
+		organizationId?: string;
+	};
+	gcp: {
+		project: string;
+	};
+	vm: {
+		user: string;
+	};
+	app: {
+		url: string;
+	};
+	agent: {
+		defaultSystemPrompt: string;
+	};
+}
+
+/**
+ * Fetch extension configuration from server (no auth required)
+ * This is used to bootstrap the extension before authentication
+ */
+export async function fetchExtensionConfig(serverUrl: string): Promise<ExtensionConfig> {
+	const response = await axios.get<ExtensionConfig>(`${serverUrl}/api/extension-config`, {
+		timeout: 10000,
+	});
+	return response.data;
+}
+
 export type TaskStatus =
 	| 'pending'
 	| 'provisioning'
@@ -246,6 +281,22 @@ export class VibeClient {
 		} catch (error) {
 			console.error(`[VibeClient] Failed to delete task ${taskId}:`, error);
 			throw new Error(`Failed to delete task: ${error}`);
+		}
+	}
+
+	/**
+	 * Get the default system prompt from server config
+	 */
+	async getDefaultSystemPrompt(): Promise<string> {
+		try {
+			console.log('[VibeClient] Fetching default system prompt from config...');
+			const response = await this.client.get<{ config: { value: string } }>(
+				'/api/config/agent.default_system_prompt'
+			);
+			return response.data.config?.value || '';
+		} catch (error) {
+			console.error('[VibeClient] Failed to fetch default system prompt:', error);
+			return '';
 		}
 	}
 }

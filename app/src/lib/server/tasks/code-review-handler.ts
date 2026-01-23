@@ -1,3 +1,4 @@
+import { configService } from '../config-service';
 import { getTaskById, updateTaskMRMetadata } from '../db';
 import { GitLabClient } from '../gitlab/client';
 import type { GitLabMRNote, MRReviewContext } from '../gitlab/types';
@@ -161,10 +162,14 @@ export class CodeReviewHandler {
 			}
 
 			// Skip if user email is unknown or the default agent email
+			const agentFallbackEmail = await configService.get(
+				'email.fallback_address',
+				'agent@example.com'
+			);
 			if (
 				!task.user_email ||
 				task.user_email === 'unknown' ||
-				task.user_email === 'linear-agent@reindeer.ai'
+				task.user_email === agentFallbackEmail
 			) {
 				console.log(
 					`[CodeReviewHandler] No valid user email for task ${taskId}, skipping reviewer assignment`

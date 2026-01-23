@@ -1,6 +1,8 @@
 -- ============================================================================
--- PostgreSQL Version
+-- PostgreSQL Configuration Example
 -- ============================================================================
+-- Copy this file and customize for your deployment.
+-- Run against your PostgreSQL database to set up initial configuration.
 
 -- Create config table (if not exists)
 CREATE TABLE IF NOT EXISTS config (
@@ -13,46 +15,47 @@ CREATE TABLE IF NOT EXISTS config (
 	updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- Insert/Update Reindeer-specific configuration
+-- Insert/Update configuration
 -- Use ON CONFLICT to update if exists, insert if not
 
 -- Repositories Configuration
+-- Customize this JSON array with your own repositories
 INSERT INTO config (key, value, description, is_secret, category)
-VALUES ('repositories.list', '[{"id":"experimental","name":"reindeerai/experimental","url":"https://gitlab.com/reindeerai/experimental.git","baseBranch":"main","allowManual":true},{"id":"workflows","name":"reindeerai/workflows","url":"https://gitlab.com/reindeerai/workflows.git","baseBranch":"dev","allowManual":true},{"id":"app","name":"reindeerai/app","url":"https://gitlab.com/reindeerai/app.git","baseBranch":"staging","allowManual":true},{"id":"reindeer-ts","name":"reindeerai/reindeer-ts","url":"https://gitlab.com/reindeerai/reindeer-ts.git","baseBranch":"dev","allowManual":true},{"id":"cloud-infrastructure","name":"reindeerai/cloud-infrastructure","url":"https://gitlab.com/reindeerai/cloud-infrastructure.git","baseBranch":"main","allowManual":false}]', 'List of pre-configured repositories', FALSE, 'Repositories')
+VALUES ('repositories.list', '[{"id":"example-app","name":"your-org/example-app","url":"https://gitlab.com/your-org/example-app.git","baseBranch":"main","allowManual":true}]', 'List of pre-configured repositories', FALSE, 'Repositories')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP;
 
--- UI Configuration (Reindeer branding)
+-- UI Configuration
 INSERT INTO config (key, value, description, is_secret, category)
-VALUES ('ui.brand_name', 'Reindeer Code', 'Application brand name shown in the UI', FALSE, 'UI')
-ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP;
-
-INSERT INTO config (key, value, description, is_secret, category)
-VALUES ('ui.logo_path', '/reindeer-logo-bot.png', 'Path to the application logo', FALSE, 'UI')
+VALUES ('ui.brand_name', 'Code Agent', 'Application brand name shown in the UI', FALSE, 'UI')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP;
 
 INSERT INTO config (key, value, description, is_secret, category)
-VALUES ('ui.primary_color', '#004238', 'Primary brand color (hex)', FALSE, 'UI')
+VALUES ('ui.logo_path', '/logo.png', 'Path to the application logo', FALSE, 'UI')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP;
 
 INSERT INTO config (key, value, description, is_secret, category)
-VALUES ('ui.primary_color_dark', '#003329', 'Dark variant of primary brand color', FALSE, 'UI')
+VALUES ('ui.primary_color', '#2563eb', 'Primary brand color (hex)', FALSE, 'UI')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP;
 
 INSERT INTO config (key, value, description, is_secret, category)
-VALUES ('ui.primary_color_light', '#00594d', 'Light variant of primary brand color', FALSE, 'UI')
+VALUES ('ui.primary_color_dark', '#1e40af', 'Dark variant of primary brand color', FALSE, 'UI')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP;
 
 INSERT INTO config (key, value, description, is_secret, category)
-VALUES ('ui.background_color', '#f5f3ef', 'Background color (hex)', FALSE, 'UI')
+VALUES ('ui.primary_color_light', '#3b82f6', 'Light variant of primary brand color', FALSE, 'UI')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP;
 
--- Git Configuration (Reindeer-specific)
+INSERT INTO config (key, value, description, is_secret, category)
+VALUES ('ui.background_color', '#f9fafb', 'Background color (hex)', FALSE, 'UI')
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP;
+
+-- Git Configuration
 INSERT INTO config (key, value, description, is_secret, category)
 VALUES ('git.base_url', 'https://gitlab.com', 'Git repository base URL', FALSE, 'Git')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP;
 
 INSERT INTO config (key, value, description, is_secret, category)
-VALUES ('git.org', 'reindeerai', 'Git organization/group name', FALSE, 'Git')
+VALUES ('git.org', 'your-org', 'Git organization/group name', FALSE, 'Git')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP;
 
 INSERT INTO config (key, value, description, is_secret, category)
@@ -64,12 +67,12 @@ VALUES ('git.default_base_branch', 'main', 'Default base branch for new tasks', 
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP;
 
 INSERT INTO config (key, value, description, is_secret, category)
-VALUES ('git.branch_prefix', 'vibe-coding', 'Prefix for generated branch names', FALSE, 'Git')
+VALUES ('git.branch_prefix', 'agent', 'Prefix for generated branch names', FALSE, 'Git')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP;
 
 -- VM Configuration
 INSERT INTO config (key, value, description, is_secret, category)
-VALUES ('vm.user', 'reindeer-vibe', 'VM user account name', FALSE, 'VM')
+VALUES ('vm.user', 'agent', 'VM user account name', FALSE, 'VM')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP;
 
 INSERT INTO config (key, value, description, is_secret, category)
@@ -103,16 +106,16 @@ ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIM
 
 -- Authentication Configuration
 INSERT INTO config (key, value, description, is_secret, category)
-VALUES ('auth.admin_permission', 'reindeer.admin', 'Permission string for admin users', FALSE, 'Authentication')
+VALUES ('auth.admin_permission', 'admin', 'Permission string for admin users', FALSE, 'Authentication')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP;
 
 -- Email Configuration
 INSERT INTO config (key, value, description, is_secret, category)
-VALUES ('email.domain', 'reindeer.ai', 'Email domain for generated email addresses', FALSE, 'Email')
+VALUES ('email.domain', 'example.com', 'Email domain for generated email addresses', FALSE, 'Email')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP;
 
 INSERT INTO config (key, value, description, is_secret, category)
-VALUES ('email.fallback_address', 'agent@reindeer.ai', 'Fallback email address for automated actions', FALSE, 'Email')
+VALUES ('email.fallback_address', 'agent@example.com', 'Fallback email address for automated actions', FALSE, 'Email')
 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP;
 
 -- Verify the configuration

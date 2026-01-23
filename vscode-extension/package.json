@@ -2,13 +2,9 @@
 	"name": "reindeer-coder",
 	"displayName": "Reindeer Coder",
 	"description": "Connect to your Reindeer Coder remote workspaces",
-	"version": "0.1.1",
+	"version": "0.2.0",
 	"publisher": "reindeer-ai",
 	"icon": "resources/icon.png",
-	"repository": {
-		"type": "git",
-		"url": "https://gitlab.com/reindeerai/reindeer-coder.git"
-	},
 	"engines": {
 		"vscode": "^1.85.0"
 	},
@@ -38,6 +34,10 @@
 			]
 		},
 		"commands": [
+			{
+				"command": "reindeerCoder.configureServer",
+				"title": "Reindeer Coder: Configure Server"
+			},
 			{
 				"command": "reindeerCoder.login",
 				"title": "Reindeer Coder: Login"
@@ -124,40 +124,10 @@
 		"configuration": {
 			"title": "Reindeer Coder",
 			"properties": {
-				"reindeerCoder.apiUrl": {
+				"reindeerCoder.serverUrl": {
 					"type": "string",
-					"default": "https://vibe.reindeerlabs.ai",
-					"description": "Reindeer Coder API URL"
-				},
-				"reindeerCoder.auth0Domain": {
-					"type": "string",
-					"default": "dev-0d0uyl2iqc17144b.us.auth0.com",
-					"description": "Auth0 domain"
-				},
-				"reindeerCoder.auth0ClientId": {
-					"type": "string",
-					"default": "i6QxH7zvtkkm5pD1iCS4mcIavVXhuOiZ",
-					"description": "Auth0 client ID (same as web app)"
-				},
-				"reindeerCoder.auth0Audience": {
-					"type": "string",
-					"default": "https://vibe.reindeerlabs.ai",
-					"description": "Auth0 API audience (should match web app)"
-				},
-				"reindeerCoder.auth0OrganizationId": {
-					"type": "string",
-					"default": "org_9WU9bq88J0jAPjmM",
-					"description": "Auth0 organization ID (optional, leave empty if not using organizations)"
-				},
-				"reindeerCoder.gcpProject": {
-					"type": "string",
-					"default": "reindeer-vibe",
-					"description": "GCP project ID for compute instances"
-				},
-				"reindeerCoder.mountPath": {
-					"type": "string",
-					"default": "~/reindeer-coder-mounts",
-					"description": "[Deprecated] This setting is no longer used as the extension now uses VSCode Remote-SSH instead of SSHFS"
+					"default": "",
+					"description": "Reindeer Coder server URL (e.g., https://your-server.example.com)"
 				}
 			}
 		}

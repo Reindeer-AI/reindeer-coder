@@ -26,9 +26,12 @@ function getJWKS() {
  */
 export async function verifyToken(token: string): Promise<TokenPayload | null> {
 	try {
+		if (!env.AUTH0_AUDIENCE) {
+			throw new Error('AUTH0_AUDIENCE environment variable is required');
+		}
 		const { payload } = await jwtVerify(token, getJWKS(), {
 			issuer: `https://${env.AUTH0_DOMAIN}/`,
-			audience: env.AUTH0_AUDIENCE || 'https://app.reindeer.ai',
+			audience: env.AUTH0_AUDIENCE,
 		});
 
 		return {
