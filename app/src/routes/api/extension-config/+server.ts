@@ -10,10 +10,11 @@ import type { RequestHandler } from './$types';
  */
 export const GET: RequestHandler = async ({ url }) => {
 	// Get configuration from environment and config service
+	// Check both VITE_ prefixed (build-time) and non-prefixed (runtime) env vars
 	const auth0Domain = env.VITE_AUTH0_DOMAIN || env.AUTH0_DOMAIN || '';
-	const auth0ClientId = env.VITE_AUTH0_CLIENT_ID || '';
+	const auth0ClientId = env.VITE_AUTH0_CLIENT_ID || env.AUTH0_CLIENT_ID || '';
 	const auth0Audience = env.VITE_AUTH0_AUDIENCE || env.AUTH0_AUDIENCE || '';
-	const auth0OrganizationId = env.VITE_AUTH0_ORG_ID || '';
+	const auth0OrganizationId = env.VITE_AUTH0_ORG_ID || env.AUTH0_ORG_ID || '';
 
 	const gcpProject = env.GCP_PROJECT_ID || env.VITE_GCP_PROJECT_ID || '';
 	const vmUser = await configService.get('vm.user', env.VM_USER || 'agent');
