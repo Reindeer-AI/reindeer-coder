@@ -2,30 +2,42 @@
 
 Coding Agents Orchestration - Manage AI-powered coding agents with a web dashboard and VSCode extension.
 
-## Quick Start (Local Development)
+## Quick Start (UI Preview)
 
-Get up and running in minutes with SQLite and no authentication:
+Preview the UI locally with SQLite and no authentication:
 
 ```bash
-# Clone the repository
+# Clone and install
 git clone https://github.com/Reindeer-AI/reindeer-coder.git
-cd reindeer-coder
-
-# Install dependencies
-cd app
+cd reindeer-coder/app
 npm install
 
-# Create minimal .env file
-cat > .env << 'EOF'
-DB_TYPE=sqlite
-DISABLE_AUTH=true
-EOF
-
-# Start the development server
-npm run dev
+# Start with auth disabled
+npm run dev:noauth
 ```
 
-Open http://localhost:5173 in your browser. You can now create and manage coding tasks.
+Open http://localhost:5173 to explore the UI. Note: Creating tasks requires GCP setup (see below).
+
+## Local Development (Full Features)
+
+To actually create and run coding tasks, you need GCP credentials for VM provisioning:
+
+```bash
+# Copy and configure .env
+cp .env.example .env
+
+# Required for task creation:
+# - GCP_PROJECT_ID, GCP_ZONE - for VM provisioning
+# - GCP_VM_SERVICE_ACCOUNT - VM service account with Vertex AI access
+# - ANTHROPIC_API_KEY (or other AI provider keys)
+# - GitHub/GitLab credentials for repo access
+
+# Authenticate with GCP
+gcloud auth application-default login
+
+# Start development server
+npm run dev:noauth  # or npm run dev with Auth0 configured
+```
 
 ### Using with VSCode Extension
 
