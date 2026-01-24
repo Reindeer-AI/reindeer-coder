@@ -4,6 +4,9 @@ import DashboardCard from '$lib/components/DashboardCard.svelte';
 import type { DashboardMetrics } from '$lib/server/db';
 import { authToken, initAuth0, isAuthenticated, user } from '$lib/stores/auth';
 
+// Runtime env vars from layout server load
+let { data } = $props();
+
 let loading = $state(true);
 let error = $state<string | null>(null);
 let metrics = $state<DashboardMetrics | null>(null);
@@ -79,7 +82,7 @@ function formatDate(dateStr: string): string {
 }
 
 onMount(async () => {
-	await initAuth0();
+	await initAuth0(true, data.env.DISABLE_AUTH);
 	await fetchMetrics();
 	pollInterval = setInterval(fetchMetrics, 5000);
 });

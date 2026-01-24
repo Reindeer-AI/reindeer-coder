@@ -171,3 +171,35 @@ export async function getLinearApiKey(): Promise<string> {
 		'No Linear API key configured - set secrets.linear_api_key in config or LINEAR_API_KEY_SECRET env var'
 	);
 }
+
+/**
+ * Get the GitHub App private key from Secret Manager.
+ * This is the PEM-encoded private key used to authenticate as a GitHub App.
+ * Priority: 1. DB config, 2. Env var secret path, 3. Direct env var (legacy)
+ */
+export async function getGitHubAppPrivateKey(): Promise<string> {
+	// 1. Check config service for secret path
+	const configPath = await configService.get('secrets.github_app_private_key');
+	if (configPath) {
+		return getSecret(configPath);
+	}
+
+	// 2. Try secret path from env var
+	const secretPath = env.GITHUB_APP_PRIVATE_KEY_SECRET;
+	if (secretPath) {
+		return getSecret(secretPath);
+	}
+
+	// 3. Fallback to direct env var (backwards compatibility)
+	const directKey = env.GITHUB_APP_PRIVATE_KEY;
+	if (directKey) {
+		console.warn(
+			'[secrets] Using GITHUB_APP_PRIVATE_KEY directly - consider migrating to secrets.github_app_private_key config'
+		);
+		return directKey;
+	}
+
+	throw new Error(
+		'No GitHub App private key configured - set secrets.github_app_private_key in config or GITHUB_APP_PRIVATE_KEY_SECRET env var'
+	);
+}

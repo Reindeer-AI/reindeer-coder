@@ -246,6 +246,17 @@ Common causes:
 - Missing environment variables
 - Secret Manager access denied
 
+### VM Startup Fails with "PERMISSION_DENIED: Failed to impersonate"
+
+The VM service account needs permission to impersonate the Cloud Run service account to access secrets:
+
+```bash
+gcloud iam service-accounts add-iam-policy-binding reindeer-coder@<project-id>.iam.gserviceaccount.com \
+  --member="serviceAccount:reindeer-vm@<project-id>.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountTokenCreator" \
+  --project=<project-id>
+```
+
 ## Resuming Failed Deployments
 
 If the script fails partway through, resume from a specific step:

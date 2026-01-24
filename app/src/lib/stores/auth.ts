@@ -1,5 +1,5 @@
 import { type Auth0Client, createAuth0Client, type User } from '@auth0/auth0-spa-js';
-import { writable } from 'svelte/store';
+import { get, writable } from 'svelte/store';
 import { browser } from '$app/environment';
 
 interface ExtendedUser extends User {
@@ -7,14 +7,38 @@ interface ExtendedUser extends User {
 }
 
 let auth0Client: Auth0Client | null = null;
+let authDisabled = false;
 
 export const isAuthenticated = writable(false);
 export const user = writable<ExtendedUser | null>(null);
 export const authToken = writable<string | null>(null);
 export const authLoading = writable(true);
 
-export async function initAuth0(autoRedirect = true): Promise<void> {
+// Default user when auth is disabled
+const DEFAULT_USER: ExtendedUser = {
+	sub: 'local-dev-user',
+	email: 'dev@localhost',
+	name: 'Local Developer',
+};
+
+/**
+ * Initialize auth - checks if auth is disabled first
+ * @param disableAuth - If true, skips Auth0 and uses default user
+ * @param autoRedirect - If true and auth enabled, redirects to login if not authenticated
+ */
+export async function initAuth0(autoRedirect = true, disableAuth = false): Promise<void> {
 	if (!browser) return;
+
+	// If auth is disabled, set default user and return
+	if (disableAuth) {
+		authDisabled = true;
+		isAuthenticated.set(true);
+		user.set(DEFAULT_USER);
+		authToken.set(null); // No token needed - API accepts requests without tokens
+		authLoading.set(false);
+		console.log('[Auth] Authentication disabled - using default user');
+		return;
+	}
 
 	try {
 		auth0Client = await createAuth0Client({

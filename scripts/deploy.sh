@@ -798,6 +798,13 @@ setup_iam() {
         --role="roles/iam.serviceAccountUser" \
         --project="$GCP_PROJECT_ID"
 
+    # Allow VM SA to impersonate Cloud Run SA (for accessing secrets via impersonation)
+    log_info "Allowing VM SA to impersonate Cloud Run SA for secret access"
+    run_cmd gcloud iam service-accounts add-iam-policy-binding "$cloud_run_sa" \
+        --member="serviceAccount:$vm_sa" \
+        --role="roles/iam.serviceAccountTokenCreator" \
+        --project="$GCP_PROJECT_ID"
+
     # Grant roles to Cloud Build service account (for building and pushing images)
     log_info "Granting roles to Cloud Build service account"
     local project_number

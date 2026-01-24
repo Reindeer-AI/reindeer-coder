@@ -1,5 +1,5 @@
 import { error, json } from '@sveltejs/kit';
-import { extractBearerToken, verifyToken } from '$lib/server/auth';
+import { extractBearerToken, isAuthDisabled, verifyToken } from '$lib/server/auth';
 import { configService } from '$lib/server/config-service';
 import { getTaskById } from '$lib/server/db';
 import { getActiveConnection, manualReconnect, touchConnection } from '$lib/server/vm/orchestrator';
@@ -8,11 +8,11 @@ import type { RequestHandler } from './$types';
 // GET /api/tasks/:id/terminal/snapshot - Get terminal snapshot (non-SSE)
 export const GET: RequestHandler = async ({ params, request }) => {
 	const token = extractBearerToken(request.headers.get('Authorization'));
-	if (!token) {
+	if (!token && !isAuthDisabled()) {
 		throw error(401, 'Missing authorization token');
 	}
 
-	const user = await verifyToken(token);
+	const user = await verifyToken(token || '');
 	if (!user) {
 		throw error(401, 'Invalid token');
 	}

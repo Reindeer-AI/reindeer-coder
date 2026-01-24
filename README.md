@@ -2,24 +2,63 @@
 
 Coding Agents Orchestration - Manage AI-powered coding agents with a web dashboard and VSCode extension.
 
+## Quick Start (Local Development)
+
+Get up and running in minutes with SQLite and no authentication:
+
+```bash
+# Clone the repository
+git clone https://github.com/Reindeer-AI/reindeer-coder.git
+cd reindeer-coder
+
+# Install dependencies
+cd app
+npm install
+
+# Create minimal .env file
+cat > .env << 'EOF'
+DB_TYPE=sqlite
+DISABLE_AUTH=true
+EOF
+
+# Start the development server
+npm run dev
+```
+
+Open http://localhost:5173 in your browser. You can now create and manage coding tasks.
+
+### Using with VSCode Extension
+
+The VSCode extension works with your local server:
+
+1. Build and install the extension:
+   ```bash
+   cd vscode-extension
+   npm install
+   npm run build
+   # Install the .vsix file in VSCode
+   ```
+
+2. Configure the extension to use your local server URL: `http://localhost:5173`
+
 ## Components
 
 - `/app` - SvelteKit web application for managing coding agents
 - `/vscode-extension` - VSCode extension for direct IDE integration
-- `/ci` - GitLab CI/CD pipelines for deployment
+- `/ci` - CI/CD configuration for deployment
 
 ## Features
 
 - Create and monitor AI coding tasks
 - Linear integration for issue tracking
 - Real-time terminal streaming via SSH
-- GitLab integration for code review
+- GitHub and GitLab integration for code review
 
-## Deployment
+## Production Deployment
 
 ### GCP Cloud Run (Recommended)
 
-Use the automated deployment script with an AI agent:
+For production deployments with Auth0 authentication, PostgreSQL, and full features:
 
 ```bash
 # See agent_deploy.md for detailed instructions
@@ -47,24 +86,30 @@ See [`agent_deploy.md`](./agent_deploy.md) for comprehensive deployment guide.
 - SQLite or PostgreSQL database support
 - See `app/deployment/ecosystem.config.cjs`
 
+## Configuration
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DB_TYPE` | Database type (`sqlite` or `postgres`) | `sqlite` |
+| `DISABLE_AUTH` | Disable Auth0 authentication | `false` |
+| `GCP_PROJECT_ID` | GCP project for VM provisioning | - |
+| `GITHUB_APP_ID` | GitHub App ID for repository access | - |
+| `GITHUB_INSTALLATION_ID` | GitHub App Installation ID | - |
+
+### Git Provider Support
+
+Reindeer Coder supports both **GitHub** and **GitLab**:
+
+- **GitHub**: Uses GitHub App authentication for secure repository access
+- **GitLab**: Uses personal access tokens or OAuth
+
+The system automatically detects the git provider from repository URLs.
+
 ## Database Support
 
 - **SQLite** - For local development and simple deployments
 - **PostgreSQL** - For production and Cloud Run deployments
 
 Set `DB_TYPE=sqlite` or `DB_TYPE=postgres` in your environment.
-
-## Quick Start
-
-```bash
-# Web App
-cd app
-npm install
-cp .env.example .env  # Configure your environment
-npm run dev
-
-# VSCode Extension
-cd vscode-extension
-npm install
-npm run build
-```

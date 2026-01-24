@@ -1,6 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
-import { extractBearerToken, verifyToken } from '$lib/server/auth';
+import { extractBearerToken, isAuthDisabled, verifyToken } from '$lib/server/auth';
 import type { RequestHandler } from './$types';
 
 interface LinearComment {
@@ -29,11 +29,11 @@ export const GET: RequestHandler = async ({ request, params }) => {
 	const issueId = params.issueId;
 
 	const token = extractBearerToken(request.headers.get('Authorization'));
-	if (!token) {
+	if (!token && !isAuthDisabled()) {
 		throw error(401, 'Missing authorization token');
 	}
 
-	const user = await verifyToken(token);
+	const user = await verifyToken(token || '');
 	if (!user) {
 		throw error(401, 'Invalid token');
 	}
