@@ -312,10 +312,15 @@ set_defaults() {
     AUTH0_ORG_ID="${AUTH0_ORG_ID:-}"
 
     # Git configuration
-    GIT_BASE_URL="${GIT_BASE_URL:-https://gitlab.com}"
+    GIT_BASE_URL="${GIT_BASE_URL:-https://github.com}"
     GIT_ORG="${GIT_ORG:-}"
-    GIT_USER="${GIT_USER:-oauth2}"
-    GITLAB_API_URL="${GITLAB_API_URL:-https://gitlab.com/api/v4}"
+    GIT_USER="${GIT_USER:-x-access-token}"
+    GITLAB_API_URL="${GITLAB_API_URL:-}"
+
+    # GitHub App configuration (for GitHub-based deployments)
+    GITHUB_APP_ID="${GITHUB_APP_ID:-}"
+    GITHUB_INSTALLATION_ID="${GITHUB_INSTALLATION_ID:-}"
+    GITHUB_APP_PRIVATE_KEY_FILE="${GITHUB_APP_PRIVATE_KEY_FILE:-}"
 
     # Application URL
     APP_URL="${APP_URL:-}"
@@ -753,6 +758,7 @@ setup_iam() {
 
     local cloud_run_roles=(
         "roles/cloudsql.client"
+        "roles/cloudsql.instanceUser"
         "roles/secretmanager.secretAccessor"
         "roles/iam.serviceAccountTokenCreator"
         "roles/compute.instanceAdmin.v1"
@@ -791,6 +797,43 @@ setup_iam() {
         --member="serviceAccount:$cloud_run_sa" \
         --role="roles/iam.serviceAccountUser" \
         --project="$GCP_PROJECT_ID"
+
+    # Grant roles to Cloud Build service account (for building and pushing images)
+    log_info "Granting roles to Cloud Build service account"
+    local project_number
+    project_number=$(gcloud projects describe "$GCP_PROJECT_ID" --format="value(projectNumber)")
+    local cloud_build_sa="${project_number}@cloudbuild.gserviceaccount.com"
+    local compute_sa="${project_number}-compute@developer.gserviceaccount.com"
+
+    local cloud_build_roles=(
+        "roles/storage.admin"
+        "roles/artifactregistry.writer"
+    )
+
+    for role in "${cloud_build_roles[@]}"; do
+        run_cmd gcloud projects add-iam-policy-binding "$GCP_PROJECT_ID" \
+            --member="serviceAccount:$cloud_build_sa" \
+            --role="$role" \
+            --condition=None \
+            --quiet
+    done
+
+    # Cloud Build uses the default compute service account for regional builds
+    # Grant it the necessary permissions as well
+    log_info "Granting roles to default compute service account (used by Cloud Build)"
+    local compute_sa_roles=(
+        "roles/storage.objectViewer"
+        "roles/artifactregistry.writer"
+        "roles/logging.logWriter"
+    )
+
+    for role in "${compute_sa_roles[@]}"; do
+        run_cmd gcloud projects add-iam-policy-binding "$GCP_PROJECT_ID" \
+            --member="serviceAccount:$compute_sa" \
+            --role="$role" \
+            --condition=None \
+            --quiet
+    done
 
     log_success "IAM setup complete"
 }
@@ -838,6 +881,43 @@ setup_database() {
         --type=CLOUD_IAM_SERVICE_ACCOUNT \
         --project="$GCP_PROJECT_ID" 2>/dev/null || log_info "IAM user already exists"
 
+    # Grant database permissions to IAM user
+    log_info "Granting database permissions to IAM user"
+
+    # Generate a temporary password for postgres user
+    local temp_password
+    temp_password=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
+
+    if [[ "$DRY_RUN" != "true" ]]; then
+        # Set postgres password
+        gcloud sql users set-password postgres \
+            --instance="$CLOUDSQL_INSTANCE_NAME" \
+            --project="$GCP_PROJECT_ID" \
+            --password="$temp_password" 2>/dev/null
+
+        # Get instance IP
+        local instance_ip
+        instance_ip=$(gcloud sql instances describe "$CLOUDSQL_INSTANCE_NAME" \
+            --project="$GCP_PROJECT_ID" \
+            --format="value(ipAddresses[0].ipAddress)")
+
+        # Grant permissions using psql (requires psql to be installed)
+        if command -v psql &> /dev/null; then
+            log_info "Granting schema permissions to $db_user"
+            PGPASSWORD="$temp_password" psql "host=$instance_ip dbname=$DB_NAME user=postgres" -c \
+                "GRANT ALL PRIVILEGES ON DATABASE $DB_NAME TO \"$db_user\"; \
+                 GRANT ALL ON SCHEMA public TO \"$db_user\"; \
+                 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO \"$db_user\"; \
+                 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO \"$db_user\";" \
+                2>/dev/null || log_warn "Failed to grant permissions - you may need to do this manually"
+        else
+            log_warn "psql not installed - you'll need to grant database permissions manually:"
+            log_warn "  GRANT ALL ON SCHEMA public TO \"$db_user\";"
+        fi
+    else
+        echo "[DRY-RUN] Would grant database permissions to $db_user"
+    fi
+
     log_success "Database setup complete"
 }
 
@@ -880,11 +960,42 @@ setup_secrets() {
         fi
     }
 
+    create_secret_from_file() {
+        local name="$1"
+        local file_path="$2"
+
+        if [[ -z "$file_path" || ! -f "$file_path" ]]; then
+            log_warn "No file provided for secret: $name (skipping)"
+            return
+        fi
+
+        if resource_exists secret "$name"; then
+            log_info "Secret $name already exists, adding new version"
+        else
+            log_info "Creating secret: $name"
+            run_cmd gcloud secrets create "$name" \
+                --replication-policy="automatic" \
+                --project="$GCP_PROJECT_ID"
+        fi
+
+        # Add secret version from file
+        if [[ "$DRY_RUN" != "true" ]]; then
+            gcloud secrets versions add "$name" \
+                --data-file="$file_path" \
+                --project="$GCP_PROJECT_ID"
+        else
+            echo "[DRY-RUN] Would add version to secret: $name from file: $file_path"
+        fi
+    }
+
     # Create secrets
     create_secret "vibe-coding-anthropic-api-key" "$ANTHROPIC_API_KEY"
     create_secret "vibe-coding-openai-api-key" "$OPENAI_API_KEY"
     create_secret "reindeer-gitlab-api-token" "$GITLAB_TOKEN"
     create_secret "vibe-coding-linear-api-key" "$LINEAR_API_KEY"
+
+    # GitHub App private key (from file)
+    create_secret_from_file "github-app-private-key" "$GITHUB_APP_PRIVATE_KEY_FILE"
 
     log_success "Secrets setup complete"
 }
@@ -914,7 +1025,7 @@ setup_artifact_registry() {
 }
 
 #------------------------------------------------------------------------------
-# Step 7: Build and Push Docker Image
+# Step 7: Build and Push Docker Image (using Cloud Build)
 #------------------------------------------------------------------------------
 build_and_push() {
     if [[ "$SKIP_BUILD" == "true" ]]; then
@@ -922,25 +1033,20 @@ build_and_push() {
         return
     fi
 
-    log_step "Step 7: Building and pushing Docker image"
+    log_step "Step 7: Building and pushing Docker image (Cloud Build)"
 
     local image_tag="$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$ARTIFACT_REGISTRY_REPO/$SERVICE_NAME:latest"
 
-    log_info "Building image: $image_tag"
+    log_info "Building image with Cloud Build: $image_tag"
 
-    run_cmd docker build \
-        --build-arg "VITE_AUTH0_DOMAIN=$AUTH0_DOMAIN" \
-        --build-arg "VITE_AUTH0_CLIENT_ID=$AUTH0_CLIENT_ID" \
-        --build-arg "VITE_AUTH0_AUDIENCE=$AUTH0_AUDIENCE" \
-        --build-arg "VITE_AUTH0_ORG_ID=$AUTH0_ORG_ID" \
-        -t "$image_tag" \
-        -f "$PROJECT_ROOT/ci/config/Dockerfile" \
-        "$PROJECT_ROOT/app"
+    # Cloud Build builds and pushes in one step
+    run_cmd gcloud builds submit "$PROJECT_ROOT" \
+        --project="$GCP_PROJECT_ID" \
+        --region="$GCP_REGION" \
+        --substitutions="_IMAGE_TAG=$image_tag,_VITE_AUTH0_DOMAIN=$AUTH0_DOMAIN,_VITE_AUTH0_CLIENT_ID=$AUTH0_CLIENT_ID,_VITE_AUTH0_AUDIENCE=$AUTH0_AUDIENCE,_VITE_AUTH0_ORG_ID=$AUTH0_ORG_ID" \
+        --config="$PROJECT_ROOT/ci/config/cloudbuild.yaml"
 
-    log_info "Pushing image to Artifact Registry"
-    run_cmd docker push "$image_tag"
-
-    log_success "Image built and pushed"
+    log_success "Image built and pushed via Cloud Build"
 }
 
 #------------------------------------------------------------------------------
@@ -984,14 +1090,15 @@ deploy_cloud_run() {
         --add-cloudsql-instances="$cloudsql_connection" \
         --allow-unauthenticated \
         --set-env-vars="NODE_ENV=production" \
-        --set-env-vars="PORT=8080" \
         --set-env-vars="APP_URL=$app_url" \
         --set-env-vars="DB_TYPE=postgres" \
         --set-env-vars="DATABASE_URL=/cloudsql/$cloudsql_connection" \
         --set-env-vars="DB_NAME=$DB_NAME" \
         --set-env-vars="DB_USER=$db_user" \
         --set-env-vars="AUTH0_DOMAIN=$AUTH0_DOMAIN" \
+        --set-env-vars="AUTH0_CLIENT_ID=$AUTH0_CLIENT_ID" \
         --set-env-vars="AUTH0_AUDIENCE=$AUTH0_AUDIENCE" \
+        --set-env-vars="AUTH0_ORG_ID=$AUTH0_ORG_ID" \
         --set-env-vars="GCP_PROJECT_ID=$GCP_PROJECT_ID" \
         --set-env-vars="GCP_ZONE=$GCP_ZONE" \
         --set-env-vars="GCP_NETWORK=$GCP_NETWORK" \
@@ -1005,6 +1112,9 @@ deploy_cloud_run() {
         --set-env-vars="GIT_USER=$GIT_USER" \
         --set-env-vars="GITLAB_API_URL=$GITLAB_API_URL" \
         --set-env-vars="EMAIL_DOMAIN=$EMAIL_DOMAIN" \
+        --set-env-vars="GITHUB_APP_ID=$GITHUB_APP_ID" \
+        --set-env-vars="GITHUB_INSTALLATION_ID=$GITHUB_INSTALLATION_ID" \
+        --set-env-vars="GITHUB_APP_PRIVATE_KEY_SECRET=projects/$project_number/secrets/github-app-private-key/versions/latest" \
         --set-env-vars="ANTHROPIC_API_KEY_SECRET=projects/$project_number/secrets/vibe-coding-anthropic-api-key/versions/latest" \
         --set-env-vars="OPENAI_API_KEY_SECRET=projects/$project_number/secrets/vibe-coding-openai-api-key/versions/latest" \
         --set-env-vars="GITLAB_TOKEN_SECRET=projects/$project_number/secrets/reindeer-gitlab-api-token/versions/latest" \
@@ -1125,14 +1235,15 @@ ${BLUE}Secrets Created:${NC}
   - vibe-coding-linear-api-key
 
 ${YELLOW}Next Steps:${NC}
-1. Configure Auth0 callback URL: $service_url/callback
-2. Configure Auth0 logout URL: $service_url
-3. Set up Linear webhook (optional)
-4. Set up GitLab webhook for MR reviews (optional)
+1. Configure Auth0 Allowed Callback URLs: $service_url
+2. Configure Auth0 Allowed Logout URLs: $service_url
+3. Configure Auth0 Allowed Web Origins: $service_url
+4. Set up Linear webhook (optional)
+5. Set up GitHub/GitLab webhook for PR/MR reviews (optional)
 
 ${BLUE}Useful Commands:${NC}
   # View logs
-  gcloud run logs read $SERVICE_NAME --region=$GCP_REGION --project=$GCP_PROJECT_ID
+  gcloud run services logs read $SERVICE_NAME --region=$GCP_REGION --project=$GCP_PROJECT_ID
 
   # Update deployment
   ./scripts/deploy.sh --skip-db --skip-secrets

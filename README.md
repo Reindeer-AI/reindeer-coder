@@ -15,14 +15,34 @@ Coding Agents Orchestration - Manage AI-powered coding agents with a web dashboa
 - Real-time terminal streaming via SSH
 - GitLab integration for code review
 
-## Deployment Options
+## Deployment
 
-**Cloud Run** (Production)
-- Deployed via GitLab CI/CD to Google Cloud Run
-- PostgreSQL database on CloudSQL
-- Auto-scaling with managed infrastructure
+### GCP Cloud Run (Recommended)
 
-**Self-Hosted**
+Use the automated deployment script with an AI agent:
+
+```bash
+# See agent_deploy.md for detailed instructions
+./scripts/deploy.sh --interactive
+```
+
+The deployment script handles:
+- GCP project setup
+- Cloud SQL PostgreSQL database
+- Secret Manager for API keys
+- Cloud Build for container images
+- Cloud Run deployment
+- IAM and service accounts
+
+**Prerequisites:**
+- `gcloud` CLI authenticated
+- `psql` PostgreSQL client
+- `jq` JSON processor
+
+See [`agent_deploy.md`](./agent_deploy.md) for comprehensive deployment guide.
+
+### Self-Hosted
+
 - Run with PM2 or Docker
 - SQLite or PostgreSQL database support
 - See `app/deployment/ecosystem.config.cjs`

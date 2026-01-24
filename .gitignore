@@ -37,3 +37,5 @@ terminal_files/
 
 # VSCode extension build
 *.vsix
+scripts/deploy.config
+scripts/github-app-key.pem

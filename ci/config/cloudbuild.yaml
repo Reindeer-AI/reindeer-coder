@@ -1,0 +1,29 @@
+# Cloud Build configuration for Reindeer Coder
+# Used by deploy.sh for building and pushing Docker images
+
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--build-arg=VITE_AUTH0_DOMAIN=${_VITE_AUTH0_DOMAIN}'
+      - '--build-arg=VITE_AUTH0_CLIENT_ID=${_VITE_AUTH0_CLIENT_ID}'
+      - '--build-arg=VITE_AUTH0_AUDIENCE=${_VITE_AUTH0_AUDIENCE}'
+      - '--build-arg=VITE_AUTH0_ORG_ID=${_VITE_AUTH0_ORG_ID}'
+      - '-t'
+      - '${_IMAGE_TAG}'
+      - '-f'
+      - 'ci/config/Dockerfile'
+      - '.'
+
+images:
+  - '${_IMAGE_TAG}'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+substitutions:
+  _VITE_AUTH0_DOMAIN: ''
+  _VITE_AUTH0_CLIENT_ID: ''
+  _VITE_AUTH0_AUDIENCE: ''
+  _VITE_AUTH0_ORG_ID: ''
+  _IMAGE_TAG: ''
