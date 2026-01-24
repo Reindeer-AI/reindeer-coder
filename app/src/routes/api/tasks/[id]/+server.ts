@@ -1,5 +1,5 @@
 import { error, json } from '@sveltejs/kit';
-import { extractBearerToken, verifyToken } from '$lib/server/auth';
+import { extractBearerToken, isAuthDisabled, verifyToken } from '$lib/server/auth';
 import { configService } from '$lib/server/config-service';
 import { deleteTask, getTaskById, resetTaskForRetry, updateTaskStatus } from '$lib/server/db';
 import { getTerminalPreview, needsAttention } from '$lib/server/terminal-storage';
@@ -9,11 +9,11 @@ import type { RequestHandler } from './$types';
 // GET /api/tasks/:id - Get a specific task
 export const GET: RequestHandler = async ({ params, request }) => {
 	const token = extractBearerToken(request.headers.get('Authorization'));
-	if (!token) {
+	if (!token && !isAuthDisabled()) {
 		throw error(401, 'Missing authorization token');
 	}
 
-	const user = await verifyToken(token);
+	const user = await verifyToken(token || '');
 	if (!user) {
 		throw error(401, 'Invalid token');
 	}
@@ -47,11 +47,11 @@ export const GET: RequestHandler = async ({ params, request }) => {
 // PATCH /api/tasks/:id - Send instruction to running task
 export const PATCH: RequestHandler = async ({ params, request }) => {
 	const token = extractBearerToken(request.headers.get('Authorization'));
-	if (!token) {
+	if (!token && !isAuthDisabled()) {
 		throw error(401, 'Missing authorization token');
 	}
 
-	const user = await verifyToken(token);
+	const user = await verifyToken(token || '');
 	if (!user) {
 		throw error(401, 'Invalid token');
 	}
@@ -103,11 +103,11 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 // DELETE /api/tasks/:id - Stop and delete a task
 export const DELETE: RequestHandler = async ({ params, request }) => {
 	const token = extractBearerToken(request.headers.get('Authorization'));
-	if (!token) {
+	if (!token && !isAuthDisabled()) {
 		throw error(401, 'Missing authorization token');
 	}
 
-	const user = await verifyToken(token);
+	const user = await verifyToken(token || '');
 	if (!user) {
 		throw error(401, 'Invalid token');
 	}
@@ -146,11 +146,11 @@ export const DELETE: RequestHandler = async ({ params, request }) => {
 // PUT /api/tasks/:id - Complete a task and clean up resources
 export const PUT: RequestHandler = async ({ params, request }) => {
 	const token = extractBearerToken(request.headers.get('Authorization'));
-	if (!token) {
+	if (!token && !isAuthDisabled()) {
 		throw error(401, 'Missing authorization token');
 	}
 
-	const user = await verifyToken(token);
+	const user = await verifyToken(token || '');
 	if (!user) {
 		throw error(401, 'Invalid token');
 	}
@@ -185,11 +185,11 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 // POST /api/tasks/:id - Retry a failed/stopped task
 export const POST: RequestHandler = async ({ params, request }) => {
 	const token = extractBearerToken(request.headers.get('Authorization'));
-	if (!token) {
+	if (!token && !isAuthDisabled()) {
 		throw error(401, 'Missing authorization token');
 	}
 
-	const user = await verifyToken(token);
+	const user = await verifyToken(token || '');
 	if (!user) {
 		throw error(401, 'Invalid token');
 	}

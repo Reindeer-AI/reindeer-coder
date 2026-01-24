@@ -7,6 +7,20 @@ export interface TokenPayload {
 	permissions: string[];
 }
 
+// Default user for when auth is disabled
+const DEFAULT_USER: TokenPayload = {
+	sub: 'local-dev-user',
+	email: 'dev@localhost',
+	permissions: ['admin'],
+};
+
+/**
+ * Check if authentication is disabled
+ */
+export function isAuthDisabled(): boolean {
+	return env.DISABLE_AUTH === 'true' || env.DISABLE_AUTH === '1';
+}
+
 // Cache JWKS
 let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
 
@@ -23,8 +37,14 @@ function getJWKS() {
 
 /**
  * Verify a JWT token from Auth0
+ * If DISABLE_AUTH is set, returns a default user without verification
  */
 export async function verifyToken(token: string): Promise<TokenPayload | null> {
+	// If auth is disabled, return default user
+	if (isAuthDisabled()) {
+		return DEFAULT_USER;
+	}
+
 	try {
 		if (!env.AUTH0_AUDIENCE) {
 			throw new Error('AUTH0_AUDIENCE environment variable is required');

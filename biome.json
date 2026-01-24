@@ -32,6 +32,12 @@
 	},
 	"overrides": [
 		{
+			"includes": ["**/vm/orchestrator.ts"],
+			"formatter": {
+				"enabled": false
+			}
+		},
+		{
 			"includes": ["**/*.svelte"],
 			"linter": {
 				"rules": {

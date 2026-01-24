@@ -156,10 +156,31 @@ function appendTerminalBuffer(taskId: string, content: string): void {
 }
 
 /**
+ * Detect git host from repository URL
+ * Returns 'github' or 'gitlab' based on the URL
+ */
+function detectGitHost(repoUrl: string): 'github' | 'gitlab' {
+	const url = repoUrl.toLowerCase();
+	if (url.includes('github.com') || url.includes('github')) {
+		return 'github';
+	}
+	// Default to gitlab for backwards compatibility
+	return 'gitlab';
+}
+
+/**
+ * Get the git host domain from repository URL
+ */
+function getGitHostDomain(repoUrl: string): string {
+	return detectGitHost(repoUrl) === 'github' ? 'github.com' : 'gitlab.com';
+}
+
+/**
  * Extract namespace/repo from any git URL format
  * https://gitlab.com/user/repo.git -> user/repo
- * https://gitlab.com/user/repo -> user/repo
+ * https://github.com/user/repo -> user/repo
  * git@gitlab.com:user/repo.git -> user/repo
+ * git@github.com:user/repo.git -> user/repo
  * user/repo -> user/repo
  */
 function extractRepoPath(repoUrl: string): string {
@@ -740,7 +761,7 @@ export async function startTask(taskId: string): Promise<void> {
 			`--network=${network}`,
 			...(subnet ? [`--subnet=${subnet}`] : []),
 			'--tags=iap-ssh',
-			`--metadata=ANTHROPIC_API_KEY_SECRET=${env.ANTHROPIC_API_KEY_SECRET || ''},OPENAI_API_KEY_SECRET=${env.OPENAI_API_KEY_SECRET || ''},GOOGLE_API_KEY_SECRET=${env.GOOGLE_API_KEY_SECRET || ''},GITLAB_TOKEN_SECRET=${env.GITLAB_TOKEN_SECRET || ''},SECRET_IMPERSONATE_SA=${env.SECRET_IMPERSONATE_SA || ''},GIT_USER=${env.GIT_USER},GIT_USER_NAME=${gitUserName},GIT_USER_EMAIL=${gitUserEmail}`,
+			`--metadata=ANTHROPIC_API_KEY_SECRET=${env.ANTHROPIC_API_KEY_SECRET || ''},OPENAI_API_KEY_SECRET=${env.OPENAI_API_KEY_SECRET || ''},GOOGLE_API_KEY_SECRET=${env.GOOGLE_API_KEY_SECRET || ''},GITLAB_TOKEN_SECRET=${env.GITLAB_TOKEN_SECRET || ''},GITHUB_APP_ID=${env.GITHUB_APP_ID || ''},GITHUB_INSTALLATION_ID=${env.GITHUB_INSTALLATION_ID || ''},GITHUB_APP_PRIVATE_KEY_SECRET=${env.GITHUB_APP_PRIVATE_KEY_SECRET || ''},SECRET_IMPERSONATE_SA=${env.SECRET_IMPERSONATE_SA || ''},GIT_USER=${env.GIT_USER},GIT_USER_NAME=${gitUserName},GIT_USER_EMAIL=${gitUserEmail},GIT_HOST=${getGitHostDomain(task.repository)}`,
 			`--labels=vibe-coding=true`,
 			'--format=json',
 		];
@@ -982,7 +1003,10 @@ export async function startTask(taskId: string): Promise<void> {
 			// Setup CLI and environment
 			...cliSetupCommands,
 			// Clone using git credential helper (configured during startup)
-			{ cmd: `git clone https://gitlab.com/${repoPath}.git workspace`, desc: 'Cloning repository' },
+			{
+				cmd: `git clone https://${getGitHostDomain(task.repository)}/${repoPath}.git workspace`,
+				desc: 'Cloning repository',
+			},
 			{ cmd: `cd workspace`, desc: 'Entering workspace' },
 			// Configure git identity and pre-commit hooks
 			...generateGitConfigCommands(),
@@ -1239,6 +1263,13 @@ pip3 install pre-commit
 curl -fsSL https://raw.githubusercontent.com/upciti/wakemeops/main/assets/install_repository | bash
 apt-get install -y glab
 
+# Install gh CLI for GitHub pull requests
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+apt-get update
+apt-get install -y gh
+
 # Configure tmux for ${vmUser} user for better scrolling and terminal experience
 su - ${vmUser} -c "cat > ~/.tmux.conf <<'EOF'
 # Enable mouse support for better scroll experience
@@ -1274,25 +1305,90 @@ if [ -n "$SECRET_IMPERSONATE_SA" ]; then
 fi
 
 # Configure git credentials from metadata for ${vmUser} user
-# Resolve GitLab token from Secret Manager at runtime (more secure than passing in metadata)
-GITLAB_TOKEN_SECRET=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/attributes/GITLAB_TOKEN_SECRET" -H "Metadata-Flavor: Google" || true)
-if [ -n "$GITLAB_TOKEN_SECRET" ]; then
-    echo "Resolving GitLab token from Secret Manager..."
-    GITLAB_TOKEN=$(gcloud secrets versions access "$GITLAB_TOKEN_SECRET" $IMPERSONATE_FLAG 2>&1 | grep -v "^WARNING")
-    if [ -z "$GITLAB_TOKEN" ] || echo "$GITLAB_TOKEN" | grep -qi "error|denied|permission"; then
-        echo "Failed to resolve GitLab token: $GITLAB_TOKEN"
-        GITLAB_TOKEN=""
+# Detect which git host we're using
+GIT_HOST=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/attributes/GIT_HOST" -H "Metadata-Flavor: Google" || echo "gitlab.com")
+echo "Git host detected: $GIT_HOST"
+
+if [ "$GIT_HOST" = "github.com" ]; then
+    # GitHub App authentication - generate installation access token
+    GITHUB_APP_ID=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/attributes/GITHUB_APP_ID" -H "Metadata-Flavor: Google" || true)
+    GITHUB_INSTALLATION_ID=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/attributes/GITHUB_INSTALLATION_ID" -H "Metadata-Flavor: Google" || true)
+    GITHUB_APP_PRIVATE_KEY_SECRET=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/attributes/GITHUB_APP_PRIVATE_KEY_SECRET" -H "Metadata-Flavor: Google" || true)
+
+    if [ -n "$GITHUB_APP_ID" ] && [ -n "$GITHUB_INSTALLATION_ID" ] && [ -n "$GITHUB_APP_PRIVATE_KEY_SECRET" ]; then
+        echo "Resolving GitHub App private key from Secret Manager..."
+        GITHUB_APP_PRIVATE_KEY=$(gcloud secrets versions access "$GITHUB_APP_PRIVATE_KEY_SECRET" $IMPERSONATE_FLAG 2>&1 | grep -v "^WARNING")
+
+        if [ -n "$GITHUB_APP_PRIVATE_KEY" ]; then
+            echo "Generating GitHub App installation access token..."
+            # Save private key to temp file for JWT generation
+            echo "$GITHUB_APP_PRIVATE_KEY" > /tmp/github-app-key.pem
+            chmod 600 /tmp/github-app-key.pem
+
+            # Generate JWT using openssl (valid for 10 minutes)
+            NOW=$(date +%s)
+            IAT=$((NOW - 60))
+            EXP=$((NOW + 600))
+
+            # Create JWT header and payload
+            HEADER=$(echo -n '{"alg":"RS256","typ":"JWT"}' | base64 -w 0 | tr '+/' '-_' | tr -d '=')
+            PAYLOAD=$(echo -n '{"iat":'$IAT',"exp":'$EXP',"iss":"'$GITHUB_APP_ID'"}' | base64 -w 0 | tr '+/' '-_' | tr -d '=')
+
+            # Sign the JWT
+            SIGNATURE=$(echo -n "$HEADER.$PAYLOAD" | openssl dgst -sha256 -sign /tmp/github-app-key.pem | base64 -w 0 | tr '+/' '-_' | tr -d '=')
+            JWT="$HEADER.$PAYLOAD.$SIGNATURE"
+
+            # Exchange JWT for installation access token
+            GITHUB_TOKEN=$(curl -s -X POST \
+                -H "Authorization: Bearer $JWT" \
+                -H "Accept: application/vnd.github+json" \
+                "https://api.github.com/app/installations/$GITHUB_INSTALLATION_ID/access_tokens" | jq -r '.token // empty')
+
+            rm -f /tmp/github-app-key.pem
+
+            if [ -n "$GITHUB_TOKEN" ]; then
+                echo "GitHub App token generated successfully"
+                su - ${vmUser} -c "git config --global credential.helper store"
+                # Write credentials file directly as root (su -c subshell can't access parent vars)
+                echo "https://x-access-token:$GITHUB_TOKEN@github.com" > /home/${vmUser}/.git-credentials
+                chown ${vmUser}:${vmUser} /home/${vmUser}/.git-credentials
+                chmod 600 /home/${vmUser}/.git-credentials
+                # Authenticate gh CLI for ${vmUser} user
+                echo "$GITHUB_TOKEN" | su - ${vmUser} -c "gh auth login --with-token"
+                # Persist token for later use
+                echo "GITHUB_TOKEN=$GITHUB_TOKEN" >> /etc/environment
+                echo "export GITHUB_TOKEN=$GITHUB_TOKEN" >> /home/${vmUser}/.bashrc
+            else
+                echo "Failed to generate GitHub App token"
+            fi
+        else
+            echo "Failed to resolve GitHub App private key"
+        fi
     else
-        echo "GitLab token resolved successfully"
+        echo "GitHub App credentials not configured (APP_ID, INSTALLATION_ID, or PRIVATE_KEY_SECRET missing)"
     fi
-fi
-if [ -n "$GITLAB_TOKEN" ]; then
-    # Configure git credential helper to use the token for ${vmUser} user
-    su - ${vmUser} -c "git config --global credential.helper store"
-    su - ${vmUser} -c "echo https://oauth2:\${GITLAB_TOKEN}@gitlab.com > ~/.git-credentials"
-    su - ${vmUser} -c "chmod 600 ~/.git-credentials"
-    # Authenticate glab CLI for ${vmUser} user
-    su - ${vmUser} -c "glab auth login --token \${GITLAB_TOKEN} --hostname gitlab.com"
+else
+    # GitLab token authentication
+    GITLAB_TOKEN_SECRET=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/attributes/GITLAB_TOKEN_SECRET" -H "Metadata-Flavor: Google" || true)
+    if [ -n "$GITLAB_TOKEN_SECRET" ]; then
+        echo "Resolving GitLab token from Secret Manager..."
+        GITLAB_TOKEN=$(gcloud secrets versions access "$GITLAB_TOKEN_SECRET" $IMPERSONATE_FLAG 2>&1 | grep -v "^WARNING")
+        if [ -z "$GITLAB_TOKEN" ] || echo "$GITLAB_TOKEN" | grep -qi "error|denied|permission"; then
+            echo "Failed to resolve GitLab token: $GITLAB_TOKEN"
+            GITLAB_TOKEN=""
+        else
+            echo "GitLab token resolved successfully"
+        fi
+    fi
+    if [ -n "$GITLAB_TOKEN" ]; then
+        su - ${vmUser} -c "git config --global credential.helper store"
+        # Write credentials file directly as root (su -c subshell can't access parent vars)
+        echo "https://oauth2:$GITLAB_TOKEN@gitlab.com" > /home/${vmUser}/.git-credentials
+        chown ${vmUser}:${vmUser} /home/${vmUser}/.git-credentials
+        chmod 600 /home/${vmUser}/.git-credentials
+        # Authenticate glab CLI for ${vmUser} user
+        echo "$GITLAB_TOKEN" | su - ${vmUser} -c "glab auth login --token - --hostname gitlab.com"
+    fi
 fi
 
 # Configure git identity from metadata for ${vmUser} user
@@ -1307,8 +1403,10 @@ fi
 
 	const cliScripts: Record<string, string> = {
 		'claude-code': `
-# Install Claude Code
-npm install -g @anthropic-ai/claude-code
+# Install Claude Code as the VM user (native install - must use bash, not sh)
+su - ${vmUser} -c "curl -fsSL https://claude.ai/install.sh | bash"
+# Add to PATH for all users (installer puts it in ~/.local/bin)
+ln -sf /home/${vmUser}/.local/bin/claude /usr/local/bin/claude 2>/dev/null || true
 
 # Resolve Anthropic API key from Secret Manager at runtime (more secure)
 ANTHROPIC_API_KEY_SECRET=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/attributes/ANTHROPIC_API_KEY_SECRET" -H "Metadata-Flavor: Google" || true)
@@ -1572,15 +1670,21 @@ function generateCliSetupCommands(
 	systemPrompt: string | null | undefined,
 	vmUser: string
 ): Array<{ cmd: string; desc: string }> {
-	// Common setup commands - resolve GitLab token from Secret Manager and load git user
+	// Common setup commands - detect git host and resolve appropriate token
 	const commonCommands: Array<{ cmd: string; desc: string }> = [
 		{
-			cmd: `GITLAB_TOKEN_SECRET=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/attributes/GITLAB_TOKEN_SECRET" -H "Metadata-Flavor: Google") && IMPERSONATE_FLAG="" && [ -n "$SECRET_IMPERSONATE_SA" ] && IMPERSONATE_FLAG="--impersonate-service-account=$SECRET_IMPERSONATE_SA" && export GITLAB_TOKEN=$(gcloud secrets versions access "$GITLAB_TOKEN_SECRET" $IMPERSONATE_FLAG 2>&1 | grep -v "^WARNING")`,
-			desc: 'Resolving GitLab token from Secret Manager',
+			cmd: `export GIT_HOST=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/attributes/GIT_HOST" -H "Metadata-Flavor: Google" || echo "gitlab.com")`,
+			desc: 'Detecting git host from VM metadata',
 		},
 		{
 			cmd: `export GIT_USER=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/attributes/GIT_USER" -H "Metadata-Flavor: Google")`,
 			desc: 'Loading git user from VM metadata',
+		},
+		{
+			// For GitLab: resolve token from Secret Manager
+			// For GitHub: token was already set up during startup script
+			cmd: `if [ "$GIT_HOST" = "gitlab.com" ]; then GITLAB_TOKEN_SECRET=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/attributes/GITLAB_TOKEN_SECRET" -H "Metadata-Flavor: Google") && IMPERSONATE_FLAG="" && [ -n "$SECRET_IMPERSONATE_SA" ] && IMPERSONATE_FLAG="--impersonate-service-account=$SECRET_IMPERSONATE_SA" && export GITLAB_TOKEN=$(gcloud secrets versions access "$GITLAB_TOKEN_SECRET" $IMPERSONATE_FLAG 2>&1 | grep -v "^WARNING"); else echo "Using GitHub - token already configured"; fi`,
+			desc: 'Resolving git token from Secret Manager (GitLab only)',
 		},
 	];
 
@@ -1590,7 +1694,7 @@ function generateCliSetupCommands(
 	const cliCommands: Record<string, Array<{ cmd: string; desc: string }>> = {
 		'claude-code': [
 			{
-				cmd: `command -v claude || sudo npm install -g @anthropic-ai/claude-code`,
+				cmd: `command -v claude || (curl -fsSL https://claude.ai/install.sh | bash && sudo ln -sf ~/.local/bin/claude /usr/local/bin/claude)`,
 				desc: 'Installing Claude Code CLI',
 			},
 			{

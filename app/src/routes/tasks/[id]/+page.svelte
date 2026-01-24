@@ -241,7 +241,7 @@ const connectionStatusColors: Record<string, string> = {
 };
 
 onMount(async () => {
-	await initAuth0();
+	await initAuth0(true, data.env.DISABLE_AUTH);
 	await fetchTask();
 	// Poll for status updates
 	pollInterval = setInterval(fetchTask, 5000);

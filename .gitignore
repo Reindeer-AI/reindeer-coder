@@ -12,6 +12,10 @@ build/
 .env.*
 !.env.example
 
+# Deployment config (contains secrets)
+scripts/deploy.config
+!scripts/deploy.config.example
+
 # IDE
 .vscode/
 .idea/
@@ -33,3 +37,5 @@ terminal_files/
 
 # VSCode extension build
 *.vsix
+scripts/deploy.config
+scripts/github-app-key.pem

@@ -170,9 +170,15 @@ export const DEFAULT_CONFIG = {
 	},
 
 	// Git Configuration
+	'git.provider': {
+		value: 'gitlab',
+		description: 'Git provider (github or gitlab)',
+		category: 'Git',
+		is_secret: false,
+	},
 	'git.base_url': {
 		value: 'https://gitlab.com',
-		description: 'Git repository base URL',
+		description: 'Git repository base URL (e.g., https://github.com or https://gitlab.com)',
 		category: 'Git',
 		is_secret: false,
 	},
@@ -184,7 +190,7 @@ export const DEFAULT_CONFIG = {
 	},
 	'git.user': {
 		value: 'oauth2',
-		description: 'Git user for authentication',
+		description: 'Git user for authentication (oauth2 for GitLab, x-access-token for GitHub)',
 		category: 'Git',
 		is_secret: false,
 	},
@@ -290,10 +296,30 @@ export const DEFAULT_CONFIG = {
 		category: 'Secrets',
 		is_secret: false,
 	},
+	'secrets.github_app_private_key': {
+		value: '',
+		description: 'Secret Manager path for GitHub App private key (PEM format)',
+		category: 'Secrets',
+		is_secret: false,
+	},
 	'secrets.linear_api_key': {
 		value: '',
 		description: 'Secret Manager path for Linear API key',
 		category: 'Secrets',
+		is_secret: false,
+	},
+
+	// GitHub App Configuration
+	'github.app_id': {
+		value: '',
+		description: 'GitHub App ID',
+		category: 'Git',
+		is_secret: false,
+	},
+	'github.installation_id': {
+		value: '',
+		description: 'GitHub App Installation ID',
+		category: 'Git',
 		is_secret: false,
 	},
 };

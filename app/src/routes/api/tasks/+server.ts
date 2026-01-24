@@ -1,5 +1,5 @@
 import { error, json } from '@sveltejs/kit';
-import { extractBearerToken, verifyToken } from '$lib/server/auth';
+import { extractBearerToken, isAuthDisabled, verifyToken } from '$lib/server/auth';
 import { configService } from '$lib/server/config-service';
 import { createTask, getAllTasks, getTasksByUserId } from '$lib/server/db';
 import type { TaskCreateInput } from '$lib/server/db/schema';
@@ -10,11 +10,11 @@ import type { RequestHandler } from './$types';
 // GET /api/tasks - List all tasks for the authenticated user
 export const GET: RequestHandler = async ({ request }) => {
 	const token = extractBearerToken(request.headers.get('Authorization'));
-	if (!token) {
+	if (!token && !isAuthDisabled()) {
 		throw error(401, 'Missing authorization token');
 	}
 
-	const user = await verifyToken(token);
+	const user = await verifyToken(token || '');
 	if (!user) {
 		throw error(401, 'Invalid token');
 	}
@@ -40,11 +40,11 @@ export const GET: RequestHandler = async ({ request }) => {
 // POST /api/tasks - Create a new coding task
 export const POST: RequestHandler = async ({ request }) => {
 	const token = extractBearerToken(request.headers.get('Authorization'));
-	if (!token) {
+	if (!token && !isAuthDisabled()) {
 		throw error(401, 'Missing authorization token');
 	}
 
-	const user = await verifyToken(token);
+	const user = await verifyToken(token || '');
 	if (!user) {
 		throw error(401, 'Invalid token');
 	}

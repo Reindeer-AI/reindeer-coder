@@ -12,7 +12,7 @@ let showCreateModal = $state(false);
 let showUserDropdown = $state(false);
 
 onMount(async () => {
-	await initAuth0();
+	await initAuth0(true, data.env.DISABLE_AUTH);
 	loading = false;
 });
 </script>

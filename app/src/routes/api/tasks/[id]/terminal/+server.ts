@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { extractBearerToken, verifyToken } from '$lib/server/auth';
+import { extractBearerToken, isAuthDisabled, verifyToken } from '$lib/server/auth';
 import { configService } from '$lib/server/config-service';
 import { getTaskById } from '$lib/server/db';
 import { readTerminalFile } from '$lib/server/terminal-storage';
@@ -9,11 +9,11 @@ import type { RequestHandler } from './$types';
 // SSE endpoint for terminal streaming
 export const GET: RequestHandler = async ({ params, request, url }) => {
 	const token = url.searchParams.get('token');
-	if (!token) {
+	if (!token && !isAuthDisabled()) {
 		throw error(401, 'Missing authorization token');
 	}
 
-	const user = await verifyToken(token);
+	const user = await verifyToken(token || '');
 	if (!user) {
 		throw error(401, 'Invalid token');
 	}
@@ -212,11 +212,11 @@ export const GET: RequestHandler = async ({ params, request, url }) => {
 // POST to send input to terminal (for interactive mode)
 export const POST: RequestHandler = async ({ params, request }) => {
 	const token = extractBearerToken(request.headers.get('Authorization'));
-	if (!token) {
+	if (!token && !isAuthDisabled()) {
 		throw error(401, 'Missing authorization token');
 	}
 
-	const user = await verifyToken(token);
+	const user = await verifyToken(token || '');
 	if (!user) {
 		throw error(401, 'Invalid token');
 	}
