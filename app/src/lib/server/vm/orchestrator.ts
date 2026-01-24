@@ -1403,10 +1403,10 @@ fi
 
 	const cliScripts: Record<string, string> = {
 		'claude-code': `
-# Install Claude Code (native install)
-curl -fsSL https://claude.ai/install.sh | sh
-# Add to PATH for all users
-ln -sf /root/.claude/local/claude /usr/local/bin/claude 2>/dev/null || true
+# Install Claude Code as the VM user (native install - must use bash, not sh)
+su - ${vmUser} -c "curl -fsSL https://claude.ai/install.sh | bash"
+# Add to PATH for all users (installer puts it in ~/.local/bin)
+ln -sf /home/${vmUser}/.local/bin/claude /usr/local/bin/claude 2>/dev/null || true
 
 # Resolve Anthropic API key from Secret Manager at runtime (more secure)
 ANTHROPIC_API_KEY_SECRET=$(curl -s "http://metadata.google.internal/computeMetadata/v1/instance/attributes/ANTHROPIC_API_KEY_SECRET" -H "Metadata-Flavor: Google" || true)
@@ -1694,7 +1694,7 @@ function generateCliSetupCommands(
 	const cliCommands: Record<string, Array<{ cmd: string; desc: string }>> = {
 		'claude-code': [
 			{
-				cmd: `command -v claude || (curl -fsSL https://claude.ai/install.sh | sh && sudo ln -sf ~/.claude/local/claude /usr/local/bin/claude)`,
+				cmd: `command -v claude || (curl -fsSL https://claude.ai/install.sh | bash && sudo ln -sf ~/.local/bin/claude /usr/local/bin/claude)`,
 				desc: 'Installing Claude Code CLI',
 			},
 			{
