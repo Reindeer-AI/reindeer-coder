@@ -1,6 +1,36 @@
 # Reindeer Coder
 
-Coding Agents Orchestration - Manage AI-powered coding agents with a web dashboard and VSCode extension.
+AI Coding Agents at Scale - Orchestrate coding agents (Claude Code, Gemini CLI, Codex) across cloud VMs with a web dashboard, VS Code extension, and Linear integration.
+
+## Features
+
+### Cloud VM Orchestration
+- Spin up GCP VMs with your chosen coding agent (Claude Code, Gemini CLI, or Codex)
+- Run multiple coding tasks in parallel
+- Automatic resource cleanup after completion
+
+### Web Dashboard
+- Create and monitor AI coding tasks
+- Live terminal streaming via SSH
+- Task history and status tracking
+
+### VS Code Extension
+- Create tasks directly from your IDE
+- Monitor task progress
+- Quick access to terminal sessions
+
+### Linear Integration
+- Write task descriptions in Linear and request implementation plans
+- Review plans via Linear labels before proceeding
+- Label changes trigger automated implementation and PR creation
+- Notifications alert you to blockers or completion
+- Resources automatically release after PR merge
+
+### Git Provider Support
+- **GitHub**: GitHub App authentication for secure repository access
+- **GitLab**: Personal access tokens or OAuth
+- Automatic provider detection from repository URLs
+- Automated PR/MR creation upon task completion
 
 ## Quick Start (UI Preview)
 
@@ -20,7 +50,7 @@ Open http://localhost:5173 to explore the UI. Note: Creating tasks requires GCP 
 
 ## Local Development (Full Features)
 
-To actually create and run coding tasks, you need GCP credentials for VM provisioning:
+To create and run coding tasks, you need GCP credentials for VM provisioning:
 
 ```bash
 # Copy and configure .env
@@ -39,32 +69,41 @@ gcloud auth application-default login
 npm run dev:noauth  # or npm run dev with Auth0 configured
 ```
 
-### Using with VSCode Extension
+### VS Code Extension Setup
 
-The VSCode extension works with your local server:
+The VS Code extension connects to your Reindeer Coder server:
 
 1. Build and install the extension:
    ```bash
    cd vscode-extension
    npm install
    npm run build
-   # Install the .vsix file in VSCode
+   # Install the generated .vsix file in VS Code
    ```
 
-2. Configure the extension to use your local server URL: `http://localhost:5173`
+2. Configure the extension settings:
+   - Set the server URL (e.g., `http://localhost:5173` for local development)
+   - The extension will auto-detect authentication settings
 
-## Components
+## Architecture
 
-- `/app` - SvelteKit web application for managing coding agents
-- `/vscode-extension` - VSCode extension for direct IDE integration
-- `/ci` - CI/CD configuration for deployment
+```
+reindeer-coder/
+├── app/                 # SvelteKit web application
+│   ├── src/lib/server/  # VM orchestration, Linear integration
+│   └── src/routes/      # API endpoints and UI pages
+├── vscode-extension/    # VS Code extension for IDE integration
+└── ci/                  # CI/CD configuration
+```
 
-## Features
+### How It Works
 
-- Create and monitor AI coding tasks
-- Linear integration for issue tracking
-- Real-time terminal streaming via SSH
-- GitHub and GitLab integration for code review
+1. **Task Creation**: Define a coding task with repository URL, branch, prompt, and coding agent
+2. **VM Provisioning**: GCP Compute Engine VM spins up with the selected agent pre-installed
+3. **Execution**: The coding agent runs autonomously with your specified prompt
+4. **Monitoring**: Watch progress via real-time terminal streaming
+5. **Intervention**: SSH into the VM anytime to guide or correct the agent
+6. **Completion**: Automated PR/MR creation and resource cleanup
 
 ## Production Deployment
 
@@ -90,7 +129,7 @@ The deployment script handles:
 - `psql` PostgreSQL client
 - `jq` JSON processor
 
-See [`agent_deploy.md`](./agent_deploy.md) for comprehensive deployment guide.
+See [`agent_deploy.md`](./agent_deploy.md) for the comprehensive deployment guide.
 
 ### Self-Hosted
 
@@ -107,21 +146,18 @@ See [`agent_deploy.md`](./agent_deploy.md) for comprehensive deployment guide.
 | `DB_TYPE` | Database type (`sqlite` or `postgres`) | `sqlite` |
 | `DISABLE_AUTH` | Disable Auth0 authentication | `false` |
 | `GCP_PROJECT_ID` | GCP project for VM provisioning | - |
+| `GCP_ZONE` | GCP zone for VMs | `us-central1-a` |
 | `GITHUB_APP_ID` | GitHub App ID for repository access | - |
 | `GITHUB_INSTALLATION_ID` | GitHub App Installation ID | - |
+| `ANTHROPIC_API_KEY` | API key for Claude (can use Secret Manager) | - |
 
-### Git Provider Support
-
-Reindeer Coder supports both **GitHub** and **GitLab**:
-
-- **GitHub**: Uses GitHub App authentication for secure repository access
-- **GitLab**: Uses personal access tokens or OAuth
-
-The system automatically detects the git provider from repository URLs.
-
-## Database Support
+### Database Support
 
 - **SQLite** - For local development and simple deployments
 - **PostgreSQL** - For production and Cloud Run deployments
 
 Set `DB_TYPE=sqlite` or `DB_TYPE=postgres` in your environment.
+
+## License
+
+MIT
