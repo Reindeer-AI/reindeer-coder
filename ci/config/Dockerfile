@@ -56,7 +56,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list \
     && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg \
     && apt-get update && apt-get install -y --no-install-recommends google-cloud-cli \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    # Pre-generate SSH keys for gcloud compute ssh (avoids runtime key generation delays)
+    && mkdir -p /root/.ssh \
+    && chmod 700 /root/.ssh \
+    && ssh-keygen -t rsa -f /root/.ssh/google_compute_engine -C "root@cloudrun" -N "" -q \
+    && chmod 600 /root/.ssh/google_compute_engine \
+    && chmod 644 /root/.ssh/google_compute_engine.pub
 
 # Copy app dependency manifest
 COPY app/package.json app/package-lock.json* ./
