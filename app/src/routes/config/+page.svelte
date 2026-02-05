@@ -1,7 +1,7 @@
 <script lang="ts">
 import { onMount } from 'svelte';
 import { goto } from '$app/navigation';
-import { authToken, isAuthenticated } from '$lib/stores/auth';
+import { canMakeApiCalls, getAuthHeaders, isAuthenticated } from '$lib/stores/auth';
 
 interface Config {
 	key: string;
@@ -77,15 +77,14 @@ async function loadConfigs() {
 	loading = true;
 	error = '';
 	try {
-		const token = $authToken;
-		if (!token) {
+		if (!canMakeApiCalls()) {
 			error = 'Not authenticated';
 			return;
 		}
 
 		const res = await fetch('/api/config', {
 			headers: {
-				Authorization: `Bearer ${token}`,
+				...getAuthHeaders(),
 			},
 		});
 		if (!res.ok) {
@@ -125,8 +124,7 @@ function cancelEdit() {
 async function saveEdit(key: string) {
 	saving = true;
 	try {
-		const token = $authToken;
-		if (!token) {
+		if (!canMakeApiCalls()) {
 			error = 'Not authenticated';
 			return;
 		}
@@ -138,7 +136,7 @@ async function saveEdit(key: string) {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				Authorization: `Bearer ${token}`,
+				...getAuthHeaders(),
 			},
 			body: JSON.stringify({
 				key,
@@ -165,8 +163,7 @@ async function deleteConfig(key: string) {
 	if (!confirm(`Are you sure you want to delete "${key}"?`)) return;
 
 	try {
-		const token = $authToken;
-		if (!token) {
+		if (!canMakeApiCalls()) {
 			error = 'Not authenticated';
 			return;
 		}
@@ -174,7 +171,7 @@ async function deleteConfig(key: string) {
 		const res = await fetch(`/api/config/${encodeURIComponent(key)}`, {
 			method: 'DELETE',
 			headers: {
-				Authorization: `Bearer ${token}`,
+				...getAuthHeaders(),
 			},
 		});
 
@@ -189,11 +186,10 @@ async function deleteConfig(key: string) {
 
 async function loadRepositories() {
 	try {
-		const token = $authToken;
-		if (!token) return;
+		if (!canMakeApiCalls()) return;
 
 		const res = await fetch('/api/config/repositories.list', {
-			headers: { Authorization: `Bearer ${token}` },
+			headers: getAuthHeaders(),
 		});
 
 		if (res.ok) {
@@ -233,8 +229,7 @@ function openRepoModal(index: number | null = null) {
 async function saveRepository() {
 	saving = true;
 	try {
-		const token = $authToken;
-		if (!token) {
+		if (!canMakeApiCalls()) {
 			error = 'Not authenticated';
 			return;
 		}
@@ -260,7 +255,7 @@ async function saveRepository() {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				Authorization: `Bearer ${token}`,
+				...getAuthHeaders(),
 			},
 			body: JSON.stringify({
 				key: 'repositories.list',
@@ -289,8 +284,7 @@ async function deleteRepository(index: number) {
 
 	saving = true;
 	try {
-		const token = $authToken;
-		if (!token) {
+		if (!canMakeApiCalls()) {
 			error = 'Not authenticated';
 			return;
 		}
@@ -301,7 +295,7 @@ async function deleteRepository(index: number) {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				Authorization: `Bearer ${token}`,
+				...getAuthHeaders(),
 			},
 			body: JSON.stringify({
 				key: 'repositories.list',
@@ -331,8 +325,7 @@ async function saveNewConfig() {
 			return;
 		}
 
-		const token = $authToken;
-		if (!token) {
+		if (!canMakeApiCalls()) {
 			error = 'Not authenticated';
 			return;
 		}
@@ -341,7 +334,7 @@ async function saveNewConfig() {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				Authorization: `Bearer ${token}`,
+				...getAuthHeaders(),
 			},
 			body: JSON.stringify({
 				key: newKey.trim(),

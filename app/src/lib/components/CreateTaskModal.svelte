@@ -1,7 +1,7 @@
 <script lang="ts">
 import { onMount } from 'svelte';
 import { goto } from '$app/navigation';
-import { authToken, user } from '$lib/stores/auth';
+import { getAuthHeaders, user } from '$lib/stores/auth';
 
 interface Props {
 	onclose: () => void;
@@ -204,11 +204,8 @@ onMount(async () => {
 
 async function fetchRepositories() {
 	try {
-		const token = $authToken;
-		if (!token) return;
-
 		const res = await fetch('/api/config/repositories.list', {
-			headers: { Authorization: `Bearer ${token}` },
+			headers: getAuthHeaders(),
 		});
 
 		if (res.ok) {
@@ -226,11 +223,8 @@ async function fetchRepositories() {
 
 async function fetchDefaultSystemPrompt() {
 	try {
-		const token = $authToken;
-		if (!token) return;
-
 		const res = await fetch('/api/config/agent.default_system_prompt', {
-			headers: { Authorization: `Bearer ${token}` },
+			headers: getAuthHeaders(),
 		});
 
 		if (res.ok) {
@@ -266,7 +260,7 @@ async function fetchLinearIssues() {
 
 	try {
 		const response = await fetch('/api/linear/issues', {
-			headers: { Authorization: `Bearer ${$authToken}` },
+			headers: getAuthHeaders(),
 		});
 
 		if (!response.ok) {
@@ -313,7 +307,7 @@ async function selectLinearIssue(issue: LinearIssue) {
 	loadingLinear = true;
 	try {
 		const response = await fetch(`/api/linear/issues/${issue.id}`, {
-			headers: { Authorization: `Bearer ${$authToken}` },
+			headers: getAuthHeaders(),
 		});
 
 		if (!response.ok) {
@@ -467,7 +461,7 @@ async function handleSubmit() {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				Authorization: `Bearer ${$authToken}`,
+				...getAuthHeaders(),
 			},
 			body: JSON.stringify(requestBody),
 		});

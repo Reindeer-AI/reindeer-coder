@@ -3,7 +3,7 @@ import type { FitAddon } from '@xterm/addon-fit';
 import type { Terminal as XTerm } from '@xterm/xterm';
 import { onDestroy, onMount } from 'svelte';
 import { browser } from '$app/environment';
-import { authToken } from '$lib/stores/auth';
+import { canMakeApiCalls, getAuthHeaders } from '$lib/stores/auth';
 
 interface ConnectionStatus {
 	status: 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | null;
@@ -148,16 +148,14 @@ function submitSendText() {
 // Send input data to the terminal (called by xterm's onData)
 async function sendInput(data: string) {
 	if (connectionState !== 'connected') return;
+	if (!canMakeApiCalls()) return;
 
 	try {
-		const token = $authToken;
-		if (!token) return;
-
 		const response = await fetch(`/api/tasks/${taskId}/terminal`, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				Authorization: `Bearer ${token}`,
+				...getAuthHeaders(),
 			},
 			body: JSON.stringify({ input: data }),
 		});
@@ -173,16 +171,14 @@ async function sendInput(data: string) {
 // Send terminal resize event to backend
 async function sendTerminalResize(cols: number, rows: number) {
 	if (connectionState !== 'connected') return;
+	if (!canMakeApiCalls()) return;
 
 	try {
-		const token = $authToken;
-		if (!token) return;
-
 		const response = await fetch(`/api/tasks/${taskId}/terminal/resize`, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				Authorization: `Bearer ${token}`,
+				...getAuthHeaders(),
 			},
 			body: JSON.stringify({ cols, rows }),
 		});
@@ -280,10 +276,16 @@ onMount(async () => {
 });
 
 function connectToStream() {
-	const token = $authToken;
-	if (!token || !term) return;
+	if (!canMakeApiCalls() || !term) return;
 
-	eventSource = new EventSource(`/api/tasks/${taskId}/terminal?token=${encodeURIComponent(token)}`);
+	// Build URL with optional token parameter
+	const headers = getAuthHeaders();
+	const token = headers['Authorization']?.replace('Bearer ', '');
+	const url = token
+		? `/api/tasks/${taskId}/terminal?token=${encodeURIComponent(token)}`
+		: `/api/tasks/${taskId}/terminal`;
+
+	eventSource = new EventSource(url);
 
 	eventSource.onmessage = (event) => {
 		try {

@@ -1,7 +1,7 @@
 <script lang="ts">
 import { onDestroy, onMount } from 'svelte';
 import type { Task } from '$lib/server/db/schema';
-import { authToken, user } from '$lib/stores/auth';
+import { canMakeApiCalls, getAuthHeaders, user } from '$lib/stores/auth';
 
 // Runtime env vars passed from parent
 interface Props {
@@ -103,12 +103,11 @@ let filteredTasks = $derived(
 );
 
 async function fetchTasks() {
-	const token = $authToken;
-	if (!token) return;
+	if (!canMakeApiCalls()) return;
 
 	try {
 		const response = await fetch('/api/tasks', {
-			headers: { Authorization: `Bearer ${token}` },
+			headers: getAuthHeaders(),
 		});
 
 		if (!response.ok) {
