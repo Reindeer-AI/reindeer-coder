@@ -2,7 +2,13 @@
 import { onDestroy, onMount } from 'svelte';
 import DashboardCard from '$lib/components/DashboardCard.svelte';
 import type { DashboardMetrics } from '$lib/server/db';
-import { authToken, initAuth0, isAuthenticated, user } from '$lib/stores/auth';
+import {
+	canMakeApiCalls,
+	getAuthHeaders,
+	initAuth0,
+	isAuthenticated,
+	user,
+} from '$lib/stores/auth';
 
 // Runtime env vars from layout server load
 let { data } = $props();
@@ -44,12 +50,11 @@ const cliIcons: Record<string, string> = {
 };
 
 async function fetchMetrics() {
-	const token = $authToken;
-	if (!token) return;
+	if (!canMakeApiCalls()) return;
 
 	try {
 		const response = await fetch('/api/dashboard', {
-			headers: { Authorization: `Bearer ${token}` },
+			headers: getAuthHeaders(),
 		});
 
 		if (!response.ok) {
