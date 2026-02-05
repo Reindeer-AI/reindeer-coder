@@ -4,7 +4,7 @@ import { goto } from '$app/navigation';
 import { page } from '$app/stores';
 import Terminal from '$lib/components/Terminal.svelte';
 import type { Task } from '$lib/server/db/schema';
-import { authToken, initAuth0, isAuthenticated } from '$lib/stores/auth';
+import { canMakeApiCalls, getAuthHeaders, initAuth0, isAuthenticated } from '$lib/stores/auth';
 
 // Runtime env vars from layout server load
 let { data } = $props();
@@ -47,12 +47,11 @@ const cliLabels: Record<string, string> = {
 };
 
 async function fetchTask() {
-	const token = $authToken;
-	if (!token) return;
+	if (!canMakeApiCalls()) return;
 
 	try {
 		const response = await fetch(`/api/tasks/${$page.params.id}`, {
-			headers: { Authorization: `Bearer ${token}` },
+			headers: getAuthHeaders(),
 		});
 
 		if (!response.ok) {
@@ -78,7 +77,7 @@ async function deleteTask() {
 	try {
 		const response = await fetch(`/api/tasks/${task.id}`, {
 			method: 'DELETE',
-			headers: { Authorization: `Bearer ${$authToken}` },
+			headers: getAuthHeaders(),
 		});
 
 		if (!response.ok) {
@@ -98,7 +97,7 @@ async function retryTask() {
 	try {
 		const response = await fetch(`/api/tasks/${task.id}`, {
 			method: 'POST',
-			headers: { Authorization: `Bearer ${$authToken}` },
+			headers: getAuthHeaders(),
 		});
 
 		if (!response.ok) {
@@ -122,7 +121,7 @@ async function completeTask() {
 	try {
 		const response = await fetch(`/api/tasks/${task.id}`, {
 			method: 'PUT',
-			headers: { Authorization: `Bearer ${$authToken}` },
+			headers: getAuthHeaders(),
 		});
 
 		if (!response.ok) {
@@ -146,7 +145,7 @@ async function reconnectSSH() {
 	try {
 		const response = await fetch(`/api/tasks/${task.id}/reconnect`, {
 			method: 'POST',
-			headers: { Authorization: `Bearer ${$authToken}` },
+			headers: getAuthHeaders(),
 		});
 
 		const data = await response.json().catch(() => ({}));

@@ -390,6 +390,40 @@ export function getActiveConnection(taskId: string): GcloudConnection | undefine
 }
 
 /**
+ * Check if a task has an active SSH connection
+ */
+export function hasActiveConnection(taskId: string): boolean {
+	const state = activeConnections.get(taskId);
+	return state !== undefined && state.status === 'connected';
+}
+
+/**
+ * Get connection info for a task (status, session, last activity)
+ */
+export function getConnectionInfo(taskId: string): {
+	hasConnection: boolean;
+	status: string | null;
+	tmuxSession: string | null;
+	lastActivity: Date | null;
+} {
+	const state = activeConnections.get(taskId);
+	if (!state) {
+		return {
+			hasConnection: false,
+			status: null,
+			tmuxSession: null,
+			lastActivity: null,
+		};
+	}
+	return {
+		hasConnection: true,
+		status: state.status,
+		tmuxSession: state.tmuxSession,
+		lastActivity: state.lastActivity,
+	};
+}
+
+/**
  * Update the last activity timestamp for a connection
  * This should be called whenever we interact with the connection (even just reading)
  */

@@ -1,6 +1,6 @@
 <script lang="ts">
 import type { Task } from '$lib/server/db/schema';
-import { authToken } from '$lib/stores/auth';
+import { getAuthHeaders } from '$lib/stores/auth';
 
 interface Props {
 	task: Task;
@@ -40,9 +40,7 @@ async function deleteTask() {
 	try {
 		const response = await fetch(`/api/tasks/${task.id}`, {
 			method: 'DELETE',
-			headers: {
-				Authorization: `Bearer ${$authToken}`,
-			},
+			headers: getAuthHeaders(),
 		});
 
 		if (!response.ok) {

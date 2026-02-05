@@ -7,12 +7,16 @@ interface ExtendedUser extends User {
 }
 
 let auth0Client: Auth0Client | null = null;
-let authDisabled = false;
+// Note: This client-side flag is ONLY for UI behavior (whether to show login, send tokens).
+// Server-side auth is enforced independently via DISABLE_AUTH env var in server/auth.ts.
+// A malicious client CANNOT bypass server auth by manipulating this value.
+let _authDisabled = false;
 
 export const isAuthenticated = writable(false);
 export const user = writable<ExtendedUser | null>(null);
 export const authToken = writable<string | null>(null);
 export const authLoading = writable(true);
+export const authDisabled = writable(false);
 
 // Default user when auth is disabled
 const DEFAULT_USER: ExtendedUser = {
@@ -31,7 +35,8 @@ export async function initAuth0(autoRedirect = true, disableAuth = false): Promi
 
 	// If auth is disabled, set default user and return
 	if (disableAuth) {
-		authDisabled = true;
+		_authDisabled = true;
+		authDisabled.set(true);
 		isAuthenticated.set(true);
 		user.set(DEFAULT_USER);
 		authToken.set(null); // No token needed - API accepts requests without tokens
@@ -120,4 +125,26 @@ export async function getToken(): Promise<string | null> {
 	} catch {
 		return null;
 	}
+}
+
+/**
+ * Get headers for authenticated API requests.
+ * Returns empty object when auth is disabled, Authorization header otherwise.
+ */
+export function getAuthHeaders(): Record<string, string> {
+	if (_authDisabled) {
+		return {};
+	}
+	const token = get(authToken);
+	if (!token) {
+		return {};
+	}
+	return { Authorization: `Bearer ${token}` };
+}
+
+/**
+ * Check if we can make API calls (either auth disabled or have a token)
+ */
+export function canMakeApiCalls(): boolean {
+	return _authDisabled || get(authToken) !== null;
 }
