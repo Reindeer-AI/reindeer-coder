@@ -2,7 +2,7 @@
 
 /**
  * Local development runner for reindeer-coder against PRODUCTION database
- * Uses cloud_sql_proxy with IAM auth (service account impersonation)
+ * Uses Cloud SQL Connector with IAM auth (service account impersonation)
  *
  * Prerequisites:
  *   - gcloud auth login (with an account that can impersonate reindeer-coder SA)
@@ -95,43 +95,11 @@ async function main() {
 		'⚠️  WARNING: Connected to PRODUCTION database. Be careful with write operations.\n'
 	);
 
-	// Start cloud_sql_proxy with impersonation
-	console.log('Starting Cloud SQL Proxy with service account impersonation...');
-	const proxy = spawn(
-		'cloud_sql_proxy',
-		[
-			'--impersonate-service-account=reindeer-coder@reindeer-vibe.iam.gserviceaccount.com',
-			'--port=5432',
-			CLOUDSQL_INSTANCE,
-		],
-		{
-			stdio: ['ignore', 'pipe', 'pipe'],
-		}
-	);
-
-	proxy.stdout?.on('data', (data) => {
-		console.log('[Proxy]', data.toString().trim());
-	});
-
-	proxy.stderr?.on('data', (data) => {
-		const msg = data.toString().trim();
-		if (msg.includes('ready for new connections')) {
-			console.log('✓ Cloud SQL Proxy ready\n');
-		} else if (msg.includes('error') || msg.includes('Error')) {
-			console.error('[Proxy Error]', msg);
-		}
-	});
-
-	// Wait for proxy to start
-	console.log('Waiting for proxy to start...');
-	await new Promise((resolve) => setTimeout(resolve, 3000));
-
-	// Fetch secrets from GCP (with impersonation)
+	// Fetch secrets from GCP
 	const secrets = await fetchSecrets();
 
-	// Build database URL for IAM auth - connect to localhost:5432 (proxy handles auth)
-	// For IAM auth, do NOT include colon/password in connection string
-	const databaseUrl = `postgresql://${encodeURIComponent(DB_IAM_USER)}@localhost:5432/${DB_NAME}`;
+	// Build database URL for IAM auth (Cloud SQL Connector handles connectivity)
+	const databaseUrl = `postgresql://${encodeURIComponent(DB_IAM_USER)}@localhost/${DB_NAME}`;
 	console.log(`\nDatabase URL: ${databaseUrl}`);
 	console.log(`CloudSQL Instance: ${CLOUDSQL_INSTANCE}\n`);
 
@@ -140,15 +108,12 @@ async function main() {
 		...process.env,
 		...STATIC_ENV,
 		...secrets,
-		// Database connection (override any .env settings)
+		// Database connection (Cloud SQL Connector will use these)
 		DB_TYPE: 'postgres',
 		DATABASE_URL: databaseUrl,
-		DB_NAME: DB_NAME,
-		DB_USER: DB_IAM_USER,
 		CLOUDSQL_INSTANCE: CLOUDSQL_INSTANCE,
-		// Impersonation for Secret Manager and other GCP services
+		// Impersonation for Cloud SQL Connector and Secret Manager
 		GOOGLE_IMPERSONATE_SERVICE_ACCOUNT: 'reindeer-coder@reindeer-vibe.iam.gserviceaccount.com',
-		SECRET_IMPERSONATE_SA: 'reindeer-coder@reindeer-vibe.iam.gserviceaccount.com',
 	};
 
 	console.log('Starting vite dev server...\n');
@@ -166,7 +131,6 @@ async function main() {
 	});
 
 	vite.on('exit', (code) => {
-		proxy.kill('SIGTERM');
 		process.exit(code ?? 0);
 	});
 
@@ -174,7 +138,6 @@ async function main() {
 	const cleanup = () => {
 		console.log('\nShutting down...');
 		vite.kill('SIGTERM');
-		proxy.kill('SIGTERM');
 	};
 
 	process.on('SIGINT', cleanup);

@@ -54,10 +54,7 @@ export async function createAdapter(config: DatabaseConfig): Promise<DbAdapter> 
  */
 export function getDatabaseConfigFromEnv(): DatabaseConfig {
 	// Check process.env first to allow runtime overrides (e.g., from run_local_prod.ts)
-	console.log('[db-config] process.env.DB_TYPE:', process.env.DB_TYPE);
-	console.log('[db-config] env.DB_TYPE:', env.DB_TYPE);
 	const dbType = (process.env.DB_TYPE || env.DB_TYPE || 'sqlite') as DatabaseType;
-	console.log('[db-config] Final dbType:', dbType);
 
 	if (dbType === 'sqlite') {
 		return {
