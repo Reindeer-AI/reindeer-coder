@@ -145,14 +145,20 @@ export class PostgresAdapter implements DbAdapter {
 		const url = new URL(connectionString.replace('postgresql://', 'http://'));
 		const username = decodeURIComponent(url.username);
 
-		// If using IAM authentication (username contains @.iam), set empty password explicitly
+		console.log('[postgres-adapter] Checking connection string for IAM auth');
+		console.log('[postgres-adapter] Username:', username);
+		console.log('[postgres-adapter] Has @ ?:', username.includes('@'));
+		console.log('[postgres-adapter] Has .iam ?:', username.includes('.iam'));
+
+		// If using IAM authentication (username contains @.iam), don't set password
 		if (username.includes('@') && username.includes('.iam')) {
+		console.log('[postgres-adapter] Using IAM auth path, no password');
 			return new PostgresAdapter({
 				host: url.hostname,
 				port: parseInt(url.port || '5432'),
 				database: url.pathname.slice(1), // Remove leading /
 				user: username,
-				password: '', // Explicitly set empty password for IAM auth through proxy
+				// No password for IAM auth - Cloud SQL Proxy handles it
 			});
 		}
 
