@@ -47,6 +47,10 @@ export class PostgresAdapter implements DbAdapter {
 
 	constructor(config: pg.PoolConfig, connector?: Connector) {
 		this.poolConfig = config;
+		// For IAM authentication through cloud_sql_proxy, don't set password at all
+		if (config.user && typeof config.user === 'string' && config.user.includes('@') && config.user.includes('.iam')) {
+			delete config.password;
+		}
 		this.pool = new Pool(config);
 		this.connector = connector;
 		this.setupPoolErrorHandler();
@@ -137,6 +141,21 @@ export class PostgresAdapter implements DbAdapter {
 		}
 
 		// Standard PostgreSQL connection string
+		// Parse the connection string to check if it's IAM auth (has @.iam in username)
+		const url = new URL(connectionString.replace('postgresql://', 'http://'));
+		const username = decodeURIComponent(url.username);
+
+		// If using IAM authentication (username contains @.iam), set empty password explicitly
+		if (username.includes('@') && username.includes('.iam')) {
+			return new PostgresAdapter({
+				host: url.hostname,
+				port: parseInt(url.port || '5432'),
+				database: url.pathname.slice(1), // Remove leading /
+				user: username,
+				password: '', // Explicitly set empty password for IAM auth through proxy
+			});
+		}
+
 		return new PostgresAdapter({
 			connectionString,
 		});
