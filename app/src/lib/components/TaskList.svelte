@@ -262,6 +262,63 @@ onDestroy(() => {
 						</span>
 					{/if}
 				</div>
+
+				{#if task.analysis}
+					<div class="mt-3 pt-3 border-t border-gray-100">
+						<div class="flex items-start gap-2 mb-2">
+							<div class="flex-1">
+								<div class="flex items-center gap-2 mb-1">
+									{#if task.analysis.state === 'agent_completed'}
+										<span class="text-xs font-semibold text-green-700">✓ Completed</span>
+									{:else if task.analysis.state === 'agent_working'}
+										<span class="text-xs font-semibold text-blue-700">⚙️ Working</span>
+									{:else if task.analysis.state === 'agent_needs_input'}
+										<span class="text-xs font-semibold text-orange-700">⚠️ Needs Input</span>
+									{:else if task.analysis.state === 'agent_stuck'}
+										<span class="text-xs font-semibold text-red-700">🔴 Stuck</span>
+									{:else if task.analysis.state === 'agent_idle_waiting'}
+										<span class="text-xs font-semibold text-gray-700">⏸️ Idle</span>
+									{/if}
+									<span class="text-xs text-gray-500">({task.analysis.confidence}% confidence)</span>
+								</div>
+								<p class="text-sm text-gray-700 leading-relaxed">{task.analysis.summary}</p>
+							</div>
+						</div>
+						{#if task.analysis.suggestedActions && task.analysis.suggestedActions.length > 0}
+							<div class="mt-2">
+								<p class="text-xs font-medium text-gray-600 mb-1">Suggested Actions:</p>
+								<ul class="text-xs text-gray-600 space-y-0.5">
+									{#each task.analysis.suggestedActions as action}
+										<li class="flex items-start gap-1">
+											<span class="text-gray-400 mt-0.5">→</span>
+											<span>{action}</span>
+										</li>
+									{/each}
+								</ul>
+							</div>
+						{/if}
+					</div>
+				{/if}
+
+				{#if task.metadata?.monitoring?.last_auto_action}
+					<div class="mt-3 pt-3 border-t border-gray-100 bg-blue-50 -mx-5 -mb-5 px-5 pb-5 rounded-b-xl">
+						<div class="flex items-start gap-2">
+							<span class="text-blue-600 text-sm mt-0.5">🤖</span>
+							<div class="flex-1">
+								<div class="flex items-center gap-2 mb-1">
+									<span class="text-xs font-semibold text-blue-700">Autonomous Instruction Sent</span>
+									<span class="text-xs text-gray-500">
+										{new Date(task.metadata.monitoring.last_auto_action.timestamp).toLocaleTimeString()}
+									</span>
+								</div>
+								<div class="text-xs text-gray-700 bg-white rounded px-2 py-1.5 font-mono whitespace-pre-wrap">
+									{task.metadata.monitoring.last_auto_action.instruction}
+								</div>
+							</div>
+						</div>
+					</div>
+				{/if}
+
 				{#if task.vm_name && ['running', 'cloning', 'initializing'].includes(task.status)}
 					<div class="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2">
 						<button

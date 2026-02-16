@@ -29,7 +29,9 @@ import {
 	hasActiveConnection,
 	getConnectionInfo,
 	sendInstruction,
+	manualReconnect,
 } from '../vm/orchestrator';
+import { CodeReviewHandler } from './code-review-handler';
 
 /**
  * Analysis result from AI
@@ -52,6 +54,15 @@ interface TaskMonitoringMetadata {
 		last_analysis?: TaskAnalysis;
 		last_check_timestamp?: string;
 		auto_continue_count?: number;
+		last_auto_action?: {
+			timestamp: string;
+			state: TaskAnalysis['state'];
+			instruction: string;
+		};
+		last_code_review_check?: {
+			timestamp: string;
+			review_sha?: string;
+		};
 	};
 }
 
@@ -63,10 +74,12 @@ export class TaskStatusMonitor {
 	private pollIntervalMs: number;
 	private anthropicClient: Anthropic | null = null;
 	private initPromise: Promise<void> | null = null;
+	private codeReviewHandler: CodeReviewHandler;
 
 	constructor() {
 		// Default: check every 60 seconds
 		this.pollIntervalMs = parseInt(env.TASK_MONITOR_POLL_INTERVAL_MS || '60000', 10);
+		this.codeReviewHandler = new CodeReviewHandler();
 	}
 
 	/**
@@ -168,13 +181,35 @@ export class TaskStatusMonitor {
 
 		console.log(`[TaskStatusMonitor] Analyzing task ${task.id}`);
 
-		// Check SSH connection status
-		const connInfo = getConnectionInfo(task.id);
+		// Check SSH connection status - we need one to send instructions
+		let connInfo = getConnectionInfo(task.id);
 		if (!connInfo.hasConnection || connInfo.status !== 'connected') {
 			console.log(
-				`[TaskStatusMonitor] Task ${task.id} has no active SSH connection (status: ${connInfo.status || 'none'}), skipping analysis`
+				`[TaskStatusMonitor] Task ${task.id} has no active SSH connection (status: ${connInfo.status || 'none'}), attempting to connect...`
 			);
-			return;
+
+			// Attempt to establish connection (won't kick out other clients now)
+			const connected = await manualReconnect(task.id);
+			if (!connected) {
+				console.log(
+					`[TaskStatusMonitor] Failed to connect to task ${task.id}, skipping analysis`
+				);
+				return;
+			}
+
+			// Wait a few seconds for terminal data to start flowing
+			await new Promise((resolve) => setTimeout(resolve, 3000));
+
+			// Recheck connection
+			connInfo = getConnectionInfo(task.id);
+			if (!connInfo.hasConnection || connInfo.status !== 'connected') {
+				console.log(
+					`[TaskStatusMonitor] Connection not established for task ${task.id}, skipping analysis`
+				);
+				return;
+			}
+
+			console.log(`[TaskStatusMonitor] Successfully connected to task ${task.id}`);
 		}
 
 		// Capture terminal output from SSH connection
@@ -191,6 +226,19 @@ export class TaskStatusMonitor {
 		console.log(
 			`[TaskStatusMonitor] Captured ${terminalOutput.split('\n').length} lines via SSH connection for task ${task.id} (last activity: ${connInfo.lastActivity?.toISOString()})`
 		);
+
+		// Try to detect and store MR/PR URL from terminal output if not already stored
+		if (!task.mr_url) {
+			try {
+				await this.codeReviewHandler.detectAndStoreMRInfo(task.id, terminalOutput);
+			} catch (error) {
+				// Non-critical - just log and continue
+				console.log(
+					`[TaskStatusMonitor] Could not detect MR URL for task ${task.id}:`,
+					error instanceof Error ? error.message : String(error)
+				);
+			}
+		}
 
 		// Analyze with Claude
 		const analysis = await this.analyzeTerminalOutput(
@@ -372,37 +420,179 @@ IMPORTANT:
 	 * Handle analysis result - take action if needed
 	 */
 	private async handleAnalysisResult(task: Task, analysis: TaskAnalysis): Promise<void> {
-		// For now, just log the analysis
-		// In the future, this could:
-		// - Send notifications
-		// - Update Linear tickets
-		// - Automatically continue agents
-		// - Trigger alerts for stuck agents
-
 		console.log(`[TaskStatusMonitor] Task ${task.id} analysis:`, {
 			state: analysis.state,
 			summary: analysis.summary,
 			confidence: analysis.confidence,
 		});
 
-		// Example: Auto-continue for idle agents (if confidence is high)
-		// This is disabled by default - uncomment to enable
-		/*
-		if (
-			analysis.state === 'agent_idle_waiting' &&
-			analysis.confidence > 70 &&
-			analysis.suggestedActions.some((action) => action.includes('continue'))
-		) {
-			const metadata = task.metadata as TaskMonitoringMetadata | null;
-			const autoContinueCount = metadata?.monitoring?.auto_continue_count || 0;
+		// Get auto-continue count to prevent infinite loops
+		const metadata = task.metadata as TaskMonitoringMetadata | null;
+		let autoContinueCount = metadata?.monitoring?.auto_continue_count || 0;
+		const MAX_AUTO_CONTINUES = 3;
 
-			// Limit auto-continues to prevent infinite loops
-			if (autoContinueCount < 2) {
-				console.log(`[TaskStatusMonitor] Auto-continuing task ${task.id}`);
-				await this.autoContinueAgent(task, analysis);
+		// Reset counter if state changed (indicates previous instructions had some effect)
+		const lastAutoAction = metadata?.monitoring?.last_auto_action;
+		if (lastAutoAction && lastAutoAction.state !== analysis.state) {
+			console.log(
+				`[TaskStatusMonitor] State changed from ${lastAutoAction.state} to ${analysis.state} for task ${task.id}, resetting auto-continue counter`
+			);
+			autoContinueCount = 0;
+			await updateTaskMetadata(task.id, {
+				monitoring: {
+					...metadata?.monitoring,
+					auto_continue_count: 0,
+				},
+			});
+		}
+
+		// Reset counter if it's been more than 10 minutes since last action
+		// This handles cases where instructions were sent but didn't work
+		if (lastAutoAction) {
+			const timeSinceLastAction = Date.now() - new Date(lastAutoAction.timestamp).getTime();
+			const TEN_MINUTES = 10 * 60 * 1000;
+			if (timeSinceLastAction > TEN_MINUTES && autoContinueCount > 0) {
+				console.log(
+					`[TaskStatusMonitor] Last action was ${Math.floor(timeSinceLastAction / 60000)} minutes ago for task ${task.id}, resetting auto-continue counter`
+				);
+				autoContinueCount = 0;
+				await updateTaskMetadata(task.id, {
+					monitoring: {
+						...metadata?.monitoring,
+						auto_continue_count: 0,
+					},
+				});
 			}
 		}
-		*/
+
+		// Only take autonomous actions if confidence is high enough
+		if (analysis.confidence < 70) {
+			return;
+		}
+
+		// Check if we have an active connection
+		const conn = getActiveConnection(task.id);
+		if (!conn) {
+			console.log(`[TaskStatusMonitor] No active connection for task ${task.id}, skipping autonomous actions`);
+			return;
+		}
+
+		// Limit total auto-continues to prevent infinite loops
+		if (autoContinueCount >= MAX_AUTO_CONTINUES) {
+			console.log(`[TaskStatusMonitor] Max auto-continues (${MAX_AUTO_CONTINUES}) reached for task ${task.id}`);
+			return;
+		}
+
+		try {
+			let instruction: string | null = null;
+
+			switch (analysis.state) {
+				case 'agent_completed':
+					// Agent claims it's done - first check for code review comments
+					if (task.mr_url) {
+						try {
+							// Check if we've already sent review comments for the current MR SHA
+							const lastReviewCheck = metadata?.monitoring?.last_code_review_check;
+							const currentMRSha = task.mr_last_review_sha;
+
+							const shouldCheckReview =
+								!lastReviewCheck ||
+								!currentMRSha ||
+								lastReviewCheck.review_sha !== currentMRSha;
+
+							if (shouldCheckReview) {
+								console.log(`[TaskStatusMonitor] Checking for code review comments on task ${task.id}`);
+
+								// Check if there are code review comments that need to be addressed
+								const reviewInstruction = await this.codeReviewHandler.getCodeReviewInstruction(
+									task.id,
+									task.task_description,
+									task.mr_url
+								);
+
+								// Update the last review check
+								await updateTaskMetadata(task.id, {
+									monitoring: {
+										...metadata?.monitoring,
+										last_code_review_check: {
+											timestamp: new Date().toISOString(),
+											review_sha: task.mr_last_review_sha || undefined,
+										},
+									},
+								});
+
+								// If we got review instruction, it means there are unresolved comments
+								if (reviewInstruction && reviewInstruction.includes('⚠️')) {
+									console.log(`[TaskStatusMonitor] Found unresolved code review comments for task ${task.id}`);
+									instruction = reviewInstruction;
+								} else {
+									console.log(`[TaskStatusMonitor] No unresolved code review comments for task ${task.id}`);
+									// No unresolved comments - check MR status
+									instruction = `Task complete with MR at ${task.mr_url}. Check: Are pipelines passing? Is MR reviewed/ready? If yes and merged, confirm completion. If pipelines fail, fix them.`;
+								}
+							} else {
+								console.log(
+									`[TaskStatusMonitor] Already checked code review for task ${task.id} at SHA ${currentMRSha}, skipping`
+								);
+								// Already checked for this SHA - just verify MR status
+								instruction = `Task complete with MR at ${task.mr_url}. Check: Are pipelines passing? If yes and MR merged, confirm completion. If pipelines fail, fix them.`;
+							}
+						} catch (error) {
+							console.log(
+								`[TaskStatusMonitor] Could not check code review comments for task ${task.id}:`,
+								error instanceof Error ? error.message : String(error)
+							);
+							// Fallback to generic MR status check
+							instruction = `Task complete with MR at ${task.mr_url}. Check: Are pipelines passing? Is MR reviewed/ready? If yes and merged, confirm completion. If pipelines fail, fix them.`;
+						}
+					} else {
+						instruction = `Task appears complete but no MR URL recorded. If you created an MR, please paste the full URL (https://gitlab.com/...). If not, create one now and share the URL.`;
+					}
+					break;
+
+				case 'agent_idle_waiting':
+					// Agent is idle - nudge it to continue or wrap up
+					instruction = `You appear idle. If task complete, create an MR. If more work needed, continue. If waiting for something, let me know what.`;
+					break;
+
+				case 'agent_stuck':
+					// Agent is stuck - offer debugging help
+					instruction = `You might be stuck with an error. Review error messages, try a different approach, or use git reset if needed. Check task description to ensure you're on track.`;
+					break;
+
+				case 'agent_needs_input':
+					// Agent explicitly needs input - don't auto-continue, but log it
+					console.log(`[TaskStatusMonitor] Task ${task.id} needs user input - not auto-continuing`);
+					return;
+
+				case 'agent_working':
+					// Agent is working fine - don't interrupt
+					return;
+			}
+
+			if (instruction) {
+				console.log(`[TaskStatusMonitor] Sending autonomous instruction to task ${task.id} (state: ${analysis.state})`);
+
+				// Update auto-continue count
+				await updateTaskMetadata(task.id, {
+					monitoring: {
+						...metadata?.monitoring,
+						auto_continue_count: autoContinueCount + 1,
+						last_auto_action: {
+							timestamp: new Date().toISOString(),
+							state: analysis.state,
+							instruction: instruction.substring(0, 200) + '...', // Store truncated version
+						},
+					},
+				});
+
+				// Send the instruction via SSH
+				await sendInstruction(task.id, instruction);
+				console.log(`[TaskStatusMonitor] Autonomous instruction sent to task ${task.id}`);
+			}
+		} catch (error) {
+			console.error(`[TaskStatusMonitor] Error sending autonomous instruction to task ${task.id}:`, error);
+		}
 	}
 
 	/**

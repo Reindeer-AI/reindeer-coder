@@ -245,6 +245,8 @@ export class CodeReviewHandler {
 			return;
 		}
 
+		console.log(`[CodeReviewHandler] Detected PR URL for task ${taskId}: ${prUrl} (owner: ${parsed.owner}, repo: ${parsed.repo}, PR: ${parsed.prNumber})`);
+
 		try {
 			const pr = await this.githubClient.getPullRequest(parsed.owner, parsed.repo, parsed.prNumber);
 
@@ -255,7 +257,7 @@ export class CodeReviewHandler {
 				last_review_sha: pr.head.sha,
 			});
 
-			console.log(`[CodeReviewHandler] Stored GitHub PR info for task ${taskId}: ${prUrl}`);
+			console.log(`[CodeReviewHandler] Stored GitHub PR info with details for task ${taskId}: ${prUrl}`);
 
 			// Assign the ticket creator as a reviewer
 			await this.assignTicketCreatorAsGitHubReviewer(
@@ -265,10 +267,19 @@ export class CodeReviewHandler {
 				parsed.prNumber
 			);
 		} catch (error) {
-			console.error(
-				`[CodeReviewHandler] Failed to fetch GitHub PR details for task ${taskId}:`,
-				error
+			console.warn(
+				`[CodeReviewHandler] Could not fetch full PR details for task ${taskId} (${error instanceof Error ? error.message : String(error)}), storing URL anyway`
 			);
+
+			// Store the URL even if we can't fetch full details
+			// This ensures we don't keep asking the agent for the URL
+			await updateTaskMRMetadata(taskId, {
+				mr_iid: parsed.prNumber,
+				mr_url: prUrl,
+				project_id: `${parsed.owner}/${parsed.repo}`,
+			});
+
+			console.log(`[CodeReviewHandler] Stored GitHub PR URL (without details) for task ${taskId}: ${prUrl}`);
 		}
 	}
 
@@ -282,6 +293,8 @@ export class CodeReviewHandler {
 			return;
 		}
 
+		console.log(`[CodeReviewHandler] Detected MR URL for task ${taskId}: ${mrUrl} (project: ${parsed.projectPath}, MR: ${parsed.mrIid})`);
+
 		try {
 			const mr = await this.gitlabClient.getMergeRequest(parsed.projectPath, parsed.mrIid);
 
@@ -292,15 +305,24 @@ export class CodeReviewHandler {
 				last_review_sha: mr.sha,
 			});
 
-			console.log(`[CodeReviewHandler] Stored GitLab MR info for task ${taskId}: ${mrUrl}`);
+			console.log(`[CodeReviewHandler] Stored GitLab MR info with details for task ${taskId}: ${mrUrl}`);
 
 			// Assign the ticket creator as a reviewer
 			await this.assignTicketCreatorAsGitLabReviewer(taskId, parsed.projectPath, parsed.mrIid);
 		} catch (error) {
-			console.error(
-				`[CodeReviewHandler] Failed to fetch GitLab MR details for task ${taskId}:`,
-				error
+			console.warn(
+				`[CodeReviewHandler] Could not fetch full MR details for task ${taskId} (${error instanceof Error ? error.message : String(error)}), storing URL anyway`
 			);
+
+			// Store the URL even if we can't fetch full details
+			// This ensures we don't keep asking the agent for the URL
+			await updateTaskMRMetadata(taskId, {
+				mr_iid: parsed.mrIid,
+				mr_url: mrUrl,
+				project_id: parsed.projectPath,
+			});
+
+			console.log(`[CodeReviewHandler] Stored GitLab MR URL (without details) for task ${taskId}: ${mrUrl}`);
 		}
 	}
 

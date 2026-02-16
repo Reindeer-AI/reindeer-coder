@@ -527,9 +527,10 @@ async function reconnectToTmux(taskId: string): Promise<boolean> {
 		await new Promise((resolve) => setTimeout(resolve, 2000));
 
 		// Reattach to tmux session (with fallback to screen for backwards compatibility)
+		// Note: No -d flag so multiple clients can connect simultaneously
 		appendTerminalBuffer(taskId, `[system] Reattaching to session: ${state.tmuxSession}\r\n`);
 		conn.write(
-			`tmux attach-session -d -t ${state.tmuxSession} 2>/dev/null || tmux new-session -s ${state.tmuxSession} 2>/dev/null || screen -r ${state.tmuxSession} 2>/dev/null || screen -S ${state.tmuxSession}\n`
+			`tmux attach-session -t ${state.tmuxSession} 2>/dev/null || tmux new-session -s ${state.tmuxSession} 2>/dev/null || screen -r ${state.tmuxSession} 2>/dev/null || screen -S ${state.tmuxSession}\n`
 		);
 
 		await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -692,9 +693,10 @@ export async function manualReconnect(taskId: string): Promise<boolean> {
 		await new Promise((resolve) => setTimeout(resolve, 2000));
 
 		// Reattach to existing session (tmux or screen for backwards compatibility)
+		// Note: No -d flag so multiple clients can connect simultaneously
 		appendTerminalBuffer(taskId, `[system] Reattaching to session: ${tmuxSession}\r\n`);
 		conn.write(
-			`tmux attach-session -d -t ${tmuxSession} 2>/dev/null || tmux new-session -s ${tmuxSession} 2>/dev/null || screen -r ${tmuxSession} 2>/dev/null || screen -S ${tmuxSession}\n`
+			`tmux attach-session -t ${tmuxSession} 2>/dev/null || tmux new-session -s ${tmuxSession} 2>/dev/null || screen -r ${tmuxSession} 2>/dev/null || screen -S ${tmuxSession}\n`
 		);
 
 		await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -1230,9 +1232,38 @@ export async function sendInstruction(taskId: string, instruction: string): Prom
 		throw new Error(`Connection is ${connState.status}. Please wait for reconnection.`);
 	}
 
-	// Write instruction to the terminal
+	// Send instruction using tmux send-keys via SSH exec (the proper way)
 	console.log(`[sendInstruction] Sending to task ${taskId}: ${instruction}`);
-	connState.conn.write(`${instruction}\n`);
+
+	// Execute tmux send-keys from outside the session via SSH
+	// Escape single quotes for shell by replacing ' with '\''
+	const escapedInstruction = instruction.replace(/'/g, "'\\''");
+	const tmuxCommand = `tmux send-keys -t ${connState.tmuxSession} '${escapedInstruction}' Enter`;
+
+	// Use sudo to run as reindeer-vibe user
+	const fullCommand = `sudo su - reindeer-vibe -c '${tmuxCommand.replace(/'/g, "'\\''")}'`;
+
+	try {
+		console.log(`[sendInstruction] Executing: ${fullCommand}`);
+		const result = await execOnVM(connState.vmName, fullCommand, connState.zone, connState.project);
+
+		if (result.exitCode !== 0) {
+			console.error(
+				`[sendInstruction] Command failed with exit code ${result.exitCode}:`,
+				result.stderr
+			);
+			throw new Error(`Failed to send instruction: ${result.stderr}`);
+		}
+
+		console.log(`[sendInstruction] Successfully sent to task ${taskId}`);
+		if (result.stdout) {
+			console.log(`[sendInstruction] Output: ${result.stdout}`);
+		}
+	} catch (error) {
+		console.error(`[sendInstruction] Failed to send to task ${taskId}:`, error);
+		throw error;
+	}
+
 	connState.lastActivity = new Date();
 	appendTerminalBuffer(taskId, `\r\n[user] ${instruction}\r\n`);
 }
