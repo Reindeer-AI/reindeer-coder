@@ -535,11 +535,6 @@ async function reconnectToTmux(taskId: string): Promise<boolean> {
 
 		await new Promise((resolve) => setTimeout(resolve, 1000));
 
-		// Reload tmux config to ensure mouse support is enabled
-		conn.write(`tmux source-file ~/.tmux.conf 2>/dev/null || true\n`);
-
-		await new Promise((resolve) => setTimeout(resolve, 1000));
-
 		// Update state
 		state.conn = conn;
 		state.status = 'connected';
@@ -698,11 +693,6 @@ export async function manualReconnect(taskId: string): Promise<boolean> {
 		conn.write(
 			`tmux attach-session -t ${tmuxSession} 2>/dev/null || tmux new-session -s ${tmuxSession} 2>/dev/null || screen -r ${tmuxSession} 2>/dev/null || screen -S ${tmuxSession}\n`
 		);
-
-		await new Promise((resolve) => setTimeout(resolve, 1000));
-
-		// Reload tmux config to ensure mouse support is enabled
-		conn.write(`tmux source-file ~/.tmux.conf 2>/dev/null || true\n`);
 
 		await new Promise((resolve) => setTimeout(resolve, 1000));
 
@@ -1031,11 +1021,6 @@ export async function startTask(taskId: string): Promise<void> {
 				desc: 'Verifying CLI installation',
 				statusAfter: 'cloning',
 			},
-			// Reload tmux config now that startup script has completed
-			{
-				cmd: `tmux source-file ~/.tmux.conf 2>/dev/null && echo "Tmux config loaded (mouse support enabled)" || echo "Tmux config not found, using defaults"`,
-				desc: 'Loading tmux configuration',
-			},
 			// Setup CLI and environment
 			...cliSetupCommands,
 			// Clone using git credential helper (configured during startup)
@@ -1232,13 +1217,14 @@ export async function sendInstruction(taskId: string, instruction: string): Prom
 		throw new Error(`Connection is ${connState.status}. Please wait for reconnection.`);
 	}
 
-	// Send instruction using tmux send-keys via SSH exec (the proper way)
+	// Send instruction using tmux send-keys via SSH exec
 	console.log(`[sendInstruction] Sending to task ${taskId}: ${instruction}`);
 
-	// Execute tmux send-keys from outside the session via SSH
-	// Escape single quotes for shell by replacing ' with '\''
+	// Execute tmux send-keys with -l (literal) flag for text, then Enter separately
+	// The -l flag sends text literally without interpreting special keys
+	// Then we send Enter as a separate command to actually submit the input
 	const escapedInstruction = instruction.replace(/'/g, "'\\''");
-	const tmuxCommand = `tmux send-keys -t ${connState.tmuxSession} '${escapedInstruction}' Enter`;
+	const tmuxCommand = `tmux send-keys -l -t ${connState.tmuxSession} '${escapedInstruction}' && tmux send-keys -t ${connState.tmuxSession} Enter`;
 
 	// Use sudo to run as reindeer-vibe user
 	const fullCommand = `sudo su - reindeer-vibe -c '${tmuxCommand.replace(/'/g, "'\\''")}'`;
