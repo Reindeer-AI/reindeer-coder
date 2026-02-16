@@ -45,10 +45,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		const success = await taskStatusMonitor.autoContinueAgent(task, analysis);
 
 		if (!success) {
-			throw error(
-				400,
-				'Failed to continue agent. The task may not have an active connection.'
-			);
+			throw error(400, 'Failed to continue agent. The task may not have an active connection.');
 		}
 
 		return json({

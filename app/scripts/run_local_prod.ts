@@ -91,9 +91,7 @@ async function fetchSecrets(): Promise<Record<string, string>> {
 
 async function main() {
 	console.log('🦌 Starting reindeer-coder local development server (PRODUCTION DB)\n');
-	console.log(
-		'⚠️  WARNING: Connected to PRODUCTION database. Be careful with write operations.\n'
-	);
+	console.log('⚠️  WARNING: Connected to PRODUCTION database. Be careful with write operations.\n');
 
 	// Fetch secrets from GCP
 	const secrets = await fetchSecrets();

@@ -67,7 +67,9 @@ export class GitLabClient {
 		if (urlMatch) return urlMatch[1];
 
 		// Try to find URLs that might be line-wrapped or have whitespace
-		const multilineMatch = text.match(/https:\/\/gitlab\.com\/([^\s]+)\/([^\s]+)\/-\/merge_requests\/(\d+)/);
+		const multilineMatch = text.match(
+			/https:\/\/gitlab\.com\/([^\s]+)\/([^\s]+)\/-\/merge_requests\/(\d+)/
+		);
 		if (multilineMatch) {
 			return `https://gitlab.com/${multilineMatch[1]}/${multilineMatch[2]}/-/merge_requests/${multilineMatch[3]}`;
 		}

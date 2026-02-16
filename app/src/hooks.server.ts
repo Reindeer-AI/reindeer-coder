@@ -12,7 +12,7 @@ initializeDefaultConfig().catch((error) => {
 
 // Global monitor instances
 let monitor: LinearAgentMonitor | null = null;
-let statusMonitor = taskStatusMonitor;
+const statusMonitor = taskStatusMonitor;
 
 // Start the Linear agent monitor when the server starts
 async function startLinearMonitor() {

@@ -245,7 +245,9 @@ export class CodeReviewHandler {
 			return;
 		}
 
-		console.log(`[CodeReviewHandler] Detected PR URL for task ${taskId}: ${prUrl} (owner: ${parsed.owner}, repo: ${parsed.repo}, PR: ${parsed.prNumber})`);
+		console.log(
+			`[CodeReviewHandler] Detected PR URL for task ${taskId}: ${prUrl} (owner: ${parsed.owner}, repo: ${parsed.repo}, PR: ${parsed.prNumber})`
+		);
 
 		try {
 			const pr = await this.githubClient.getPullRequest(parsed.owner, parsed.repo, parsed.prNumber);
@@ -257,7 +259,9 @@ export class CodeReviewHandler {
 				last_review_sha: pr.head.sha,
 			});
 
-			console.log(`[CodeReviewHandler] Stored GitHub PR info with details for task ${taskId}: ${prUrl}`);
+			console.log(
+				`[CodeReviewHandler] Stored GitHub PR info with details for task ${taskId}: ${prUrl}`
+			);
 
 			// Assign the ticket creator as a reviewer
 			await this.assignTicketCreatorAsGitHubReviewer(
@@ -279,7 +283,9 @@ export class CodeReviewHandler {
 				project_id: `${parsed.owner}/${parsed.repo}`,
 			});
 
-			console.log(`[CodeReviewHandler] Stored GitHub PR URL (without details) for task ${taskId}: ${prUrl}`);
+			console.log(
+				`[CodeReviewHandler] Stored GitHub PR URL (without details) for task ${taskId}: ${prUrl}`
+			);
 		}
 	}
 
@@ -293,7 +299,9 @@ export class CodeReviewHandler {
 			return;
 		}
 
-		console.log(`[CodeReviewHandler] Detected MR URL for task ${taskId}: ${mrUrl} (project: ${parsed.projectPath}, MR: ${parsed.mrIid})`);
+		console.log(
+			`[CodeReviewHandler] Detected MR URL for task ${taskId}: ${mrUrl} (project: ${parsed.projectPath}, MR: ${parsed.mrIid})`
+		);
 
 		try {
 			const mr = await this.gitlabClient.getMergeRequest(parsed.projectPath, parsed.mrIid);
@@ -305,7 +313,9 @@ export class CodeReviewHandler {
 				last_review_sha: mr.sha,
 			});
 
-			console.log(`[CodeReviewHandler] Stored GitLab MR info with details for task ${taskId}: ${mrUrl}`);
+			console.log(
+				`[CodeReviewHandler] Stored GitLab MR info with details for task ${taskId}: ${mrUrl}`
+			);
 
 			// Assign the ticket creator as a reviewer
 			await this.assignTicketCreatorAsGitLabReviewer(taskId, parsed.projectPath, parsed.mrIid);
@@ -322,7 +332,9 @@ export class CodeReviewHandler {
 				project_id: parsed.projectPath,
 			});
 
-			console.log(`[CodeReviewHandler] Stored GitLab MR URL (without details) for task ${taskId}: ${mrUrl}`);
+			console.log(
+				`[CodeReviewHandler] Stored GitLab MR URL (without details) for task ${taskId}: ${mrUrl}`
+			);
 		}
 	}
 

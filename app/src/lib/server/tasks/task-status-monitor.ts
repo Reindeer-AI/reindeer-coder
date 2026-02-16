@@ -15,21 +15,15 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { env } from '$env/dynamic/private';
-import {
-	getAllTasks,
-	getTaskById,
-	updateTaskMetadata,
-	type Task,
-	type TaskMetadata,
-} from '../db';
+import { getAllTasks, getTaskById, type Task, type TaskMetadata, updateTaskMetadata } from '../db';
 import { getAnthropicApiKey } from '../secrets';
 import { readTerminalFile } from '../terminal-storage';
 import {
 	getActiveConnection,
-	hasActiveConnection,
 	getConnectionInfo,
-	sendInstruction,
+	hasActiveConnection,
 	manualReconnect,
+	sendInstruction,
 } from '../vm/orchestrator';
 import { CodeReviewHandler } from './code-review-handler';
 
@@ -37,7 +31,12 @@ import { CodeReviewHandler } from './code-review-handler';
  * Analysis result from AI
  */
 export interface TaskAnalysis {
-	state: 'agent_idle_waiting' | 'agent_working' | 'agent_needs_input' | 'agent_stuck' | 'agent_completed';
+	state:
+		| 'agent_idle_waiting'
+		| 'agent_working'
+		| 'agent_needs_input'
+		| 'agent_stuck'
+		| 'agent_completed';
 	reasoning: string;
 	summary: string;
 	suggestedActions: string[];
@@ -150,10 +149,7 @@ export class TaskStatusMonitor {
 			try {
 				await this.analyzeTask(task);
 			} catch (error) {
-				console.error(
-					`[TaskStatusMonitor] Error analyzing task ${task.id}:`,
-					error
-				);
+				console.error(`[TaskStatusMonitor] Error analyzing task ${task.id}:`, error);
 			}
 		}
 	}
@@ -191,9 +187,7 @@ export class TaskStatusMonitor {
 			// Attempt to establish connection (won't kick out other clients now)
 			const connected = await manualReconnect(task.id);
 			if (!connected) {
-				console.log(
-					`[TaskStatusMonitor] Failed to connect to task ${task.id}, skipping analysis`
-				);
+				console.log(`[TaskStatusMonitor] Failed to connect to task ${task.id}, skipping analysis`);
 				return;
 			}
 
@@ -241,10 +235,7 @@ export class TaskStatusMonitor {
 		}
 
 		// Analyze with Claude
-		const analysis = await this.analyzeTerminalOutput(
-			terminalOutput,
-			task.task_description
-		);
+		const analysis = await this.analyzeTerminalOutput(terminalOutput, task.task_description);
 
 		console.log(
 			`[TaskStatusMonitor] Analysis for ${task.id}: ${analysis.state} (confidence: ${analysis.confidence}%)`
@@ -473,13 +464,17 @@ IMPORTANT:
 		// Check if we have an active connection
 		const conn = getActiveConnection(task.id);
 		if (!conn) {
-			console.log(`[TaskStatusMonitor] No active connection for task ${task.id}, skipping autonomous actions`);
+			console.log(
+				`[TaskStatusMonitor] No active connection for task ${task.id}, skipping autonomous actions`
+			);
 			return;
 		}
 
 		// Limit total auto-continues to prevent infinite loops
 		if (autoContinueCount >= MAX_AUTO_CONTINUES) {
-			console.log(`[TaskStatusMonitor] Max auto-continues (${MAX_AUTO_CONTINUES}) reached for task ${task.id}`);
+			console.log(
+				`[TaskStatusMonitor] Max auto-continues (${MAX_AUTO_CONTINUES}) reached for task ${task.id}`
+			);
 			return;
 		}
 
@@ -496,12 +491,12 @@ IMPORTANT:
 							const currentMRSha = task.mr_last_review_sha;
 
 							const shouldCheckReview =
-								!lastReviewCheck ||
-								!currentMRSha ||
-								lastReviewCheck.review_sha !== currentMRSha;
+								!lastReviewCheck || !currentMRSha || lastReviewCheck.review_sha !== currentMRSha;
 
 							if (shouldCheckReview) {
-								console.log(`[TaskStatusMonitor] Checking for code review comments on task ${task.id}`);
+								console.log(
+									`[TaskStatusMonitor] Checking for code review comments on task ${task.id}`
+								);
 
 								// Check if there are code review comments that need to be addressed
 								const reviewInstruction = await this.codeReviewHandler.getCodeReviewInstruction(
@@ -523,10 +518,14 @@ IMPORTANT:
 
 								// If we got review instruction, it means there are unresolved comments
 								if (reviewInstruction && reviewInstruction.includes('⚠️')) {
-									console.log(`[TaskStatusMonitor] Found unresolved code review comments for task ${task.id}`);
+									console.log(
+										`[TaskStatusMonitor] Found unresolved code review comments for task ${task.id}`
+									);
 									instruction = reviewInstruction;
 								} else {
-									console.log(`[TaskStatusMonitor] No unresolved code review comments for task ${task.id}`);
+									console.log(
+										`[TaskStatusMonitor] No unresolved code review comments for task ${task.id}`
+									);
 									// No unresolved comments - check MR status
 									instruction = `Task complete with MR at ${task.mr_url}. Check: Are pipelines passing? Is MR reviewed/ready? If yes and merged, confirm completion. If pipelines fail, fix them.`;
 								}
@@ -571,7 +570,9 @@ IMPORTANT:
 			}
 
 			if (instruction) {
-				console.log(`[TaskStatusMonitor] Sending autonomous instruction to task ${task.id} (state: ${analysis.state})`);
+				console.log(
+					`[TaskStatusMonitor] Sending autonomous instruction to task ${task.id} (state: ${analysis.state})`
+				);
 
 				// Update auto-continue count
 				await updateTaskMetadata(task.id, {
@@ -591,7 +592,10 @@ IMPORTANT:
 				console.log(`[TaskStatusMonitor] Autonomous instruction sent to task ${task.id}`);
 			}
 		} catch (error) {
-			console.error(`[TaskStatusMonitor] Error sending autonomous instruction to task ${task.id}:`, error);
+			console.error(
+				`[TaskStatusMonitor] Error sending autonomous instruction to task ${task.id}:`,
+				error
+			);
 		}
 	}
 
@@ -603,9 +607,7 @@ IMPORTANT:
 			// Check if we have an active connection
 			const conn = getActiveConnection(task.id);
 			if (!conn) {
-				console.log(
-					`[TaskStatusMonitor] Cannot auto-continue ${task.id}: no active connection`
-				);
+				console.log(`[TaskStatusMonitor] Cannot auto-continue ${task.id}: no active connection`);
 				return false;
 			}
 
@@ -629,10 +631,7 @@ IMPORTANT:
 
 			return true;
 		} catch (error) {
-			console.error(
-				`[TaskStatusMonitor] Error auto-continuing task ${task.id}:`,
-				error
-			);
+			console.error(`[TaskStatusMonitor] Error auto-continuing task ${task.id}:`, error);
 			return false;
 		}
 	}
@@ -655,10 +654,7 @@ IMPORTANT:
 			throw new Error(`No terminal output for task ${taskId}`);
 		}
 
-		const analysis = await this.analyzeTerminalOutput(
-			terminalOutput,
-			task.task_description
-		);
+		const analysis = await this.analyzeTerminalOutput(terminalOutput, task.task_description);
 
 		await this.storeAnalysis(taskId, analysis);
 

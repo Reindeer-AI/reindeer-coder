@@ -105,16 +105,13 @@ export const GET: RequestHandler = async ({ request }) => {
 	// Calculate summary statistics
 	const summary = {
 		totalActiveTasks: taskMonitoringInfo.length,
-		tasksWorking: taskMonitoringInfo.filter((t) => t.analysis?.state === 'agent_working')
-			.length,
-		tasksIdle: taskMonitoringInfo.filter((t) => t.analysis?.state === 'agent_idle_waiting')
-			.length,
+		tasksWorking: taskMonitoringInfo.filter((t) => t.analysis?.state === 'agent_working').length,
+		tasksIdle: taskMonitoringInfo.filter((t) => t.analysis?.state === 'agent_idle_waiting').length,
 		tasksStuck: taskMonitoringInfo.filter((t) => t.analysis?.state === 'agent_stuck').length,
 		tasksCompleted: taskMonitoringInfo.filter((t) => t.analysis?.state === 'agent_completed')
 			.length,
-		tasksNeedingInput: taskMonitoringInfo.filter(
-			(t) => t.analysis?.state === 'agent_needs_input'
-		).length,
+		tasksNeedingInput: taskMonitoringInfo.filter((t) => t.analysis?.state === 'agent_needs_input')
+			.length,
 	};
 
 	const dashboard: MonitoringDashboard = {

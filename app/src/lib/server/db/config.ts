@@ -66,7 +66,8 @@ export function getDatabaseConfigFromEnv(): DatabaseConfig {
 	if (dbType === 'postgres') {
 		// Support connection string or individual parameters
 		// Check process.env first for runtime overrides
-		const connectionString = process.env.DATABASE_URL || env.DATABASE_URL || env.DB_CONNECTION_STRING;
+		const connectionString =
+			process.env.DATABASE_URL || env.DATABASE_URL || env.DB_CONNECTION_STRING;
 
 		if (connectionString) {
 			return {

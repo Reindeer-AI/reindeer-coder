@@ -144,7 +144,9 @@ export class PostgresAdapter implements DbAdapter {
 				const sourceClient = await sourceAuth.getClient();
 				const targetSA = username + '.gserviceaccount.com';
 
-				console.log('[db] Local dev: Connecting with Cloud SQL Connector + IAM auth (impersonation)');
+				console.log(
+					'[db] Local dev: Connecting with Cloud SQL Connector + IAM auth (impersonation)'
+				);
 				console.log(`[db]   Instance: ${instanceConnectionName}`);
 				console.log(`[db]   User: ${username}`);
 				console.log(`[db]   Target SA: ${targetSA}`);
@@ -181,7 +183,6 @@ export class PostgresAdapter implements DbAdapter {
 
 			return new PostgresAdapter(config, connector);
 		}
-
 
 		// Standard PostgreSQL connection string (non-IAM)
 		return new PostgresAdapter({
