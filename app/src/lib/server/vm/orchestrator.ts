@@ -1222,9 +1222,10 @@ export async function sendInstruction(taskId: string, instruction: string): Prom
 
 	// Execute tmux send-keys with -l (literal) flag for text, then Enter separately
 	// The -l flag sends text literally without interpreting special keys
+	// Add a small delay (0.1s) between typing and pressing Enter for reliability
 	// Then we send Enter as a separate command to actually submit the input
 	const escapedInstruction = instruction.replace(/'/g, "'\\''");
-	const tmuxCommand = `tmux send-keys -l -t ${connState.tmuxSession} '${escapedInstruction}' && tmux send-keys -t ${connState.tmuxSession} Enter`;
+	const tmuxCommand = `tmux send-keys -l -t ${connState.tmuxSession} '${escapedInstruction}' && sleep 0.1 && tmux send-keys -t ${connState.tmuxSession} Enter`;
 
 	// Use sudo to run as reindeer-vibe user
 	const fullCommand = `sudo su - reindeer-vibe -c '${tmuxCommand.replace(/'/g, "'\\''")}'`;
