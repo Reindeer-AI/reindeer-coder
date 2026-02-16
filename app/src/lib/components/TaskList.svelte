@@ -15,6 +15,15 @@ let { env }: Props = $props();
 
 interface TaskWithExtras extends Task {
 	needsAttention?: boolean;
+	analysis?: {
+		state: string;
+		summary: string;
+		confidence: number;
+		suggestedActions: string[];
+		reasoning: string;
+		timestamp: string;
+	} | null;
+	lastCheckTimestamp?: string | null;
 }
 
 let tasks = $state<TaskWithExtras[]>([]);
@@ -300,7 +309,7 @@ onDestroy(() => {
 					</div>
 				{/if}
 
-				{#if task.metadata?.monitoring?.last_auto_action}
+				{#if (task.metadata as any)?.monitoring?.last_auto_action}
 					<div class="mt-3 pt-3 border-t border-gray-100 bg-blue-50 -mx-5 -mb-5 px-5 pb-5 rounded-b-xl">
 						<div class="flex items-start gap-2">
 							<span class="text-blue-600 text-sm mt-0.5">🤖</span>
@@ -308,11 +317,11 @@ onDestroy(() => {
 								<div class="flex items-center gap-2 mb-1">
 									<span class="text-xs font-semibold text-blue-700">Autonomous Instruction Sent</span>
 									<span class="text-xs text-gray-500">
-										{new Date(task.metadata.monitoring.last_auto_action.timestamp).toLocaleTimeString()}
+										{new Date((task.metadata as any).monitoring.last_auto_action.timestamp).toLocaleTimeString()}
 									</span>
 								</div>
 								<div class="text-xs text-gray-700 bg-white rounded px-2 py-1.5 font-mono whitespace-pre-wrap">
-									{task.metadata.monitoring.last_auto_action.instruction}
+									{(task.metadata as any).monitoring.last_auto_action.instruction}
 								</div>
 							</div>
 						</div>
