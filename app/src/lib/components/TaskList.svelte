@@ -338,7 +338,7 @@ onDestroy(() => {
 							</div>
 						</div>
 						{#if (task.analysis?.suggestedActions && task.analysis.suggestedActions.length > 0) || (task.metadata as any)?.monitoring?.suggested_instruction}
-							<div class="mt-2">
+							<div class="mt-2" onclick={(e) => e.preventDefault()} onmousedown={(e) => e.stopPropagation()}>
 								{#if (task.metadata as any)?.monitoring?.suggested_instruction}
 									<div class="mb-3 bg-amber-50 border border-amber-200 rounded-lg p-2">
 										<div class="flex items-center gap-2 mb-2">
@@ -404,7 +404,7 @@ onDestroy(() => {
 				{/if}
 
 				{#if (task.metadata as any)?.monitoring?.last_auto_action}
-					<div class="mt-3 pt-3 border-t border-gray-100 bg-blue-50 -mx-5 -mb-5 px-5 pb-5 rounded-b-xl">
+					<div class="mt-3 pt-3 border-t border-gray-100 bg-blue-50 -mx-5 -mb-5 px-5 pb-5 rounded-b-xl" onclick={(e) => e.preventDefault()} onmousedown={(e) => e.stopPropagation()}>
 						<div class="flex items-start gap-2">
 							<span class="text-blue-600 text-sm mt-0.5">🤖</span>
 							<div class="flex-1">
@@ -423,7 +423,7 @@ onDestroy(() => {
 				{/if}
 
 				{#if task.vm_name && ['running', 'cloning', 'initializing'].includes(task.status)}
-					<div class="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2">
+					<div class="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2" onclick={(e) => e.preventDefault()} onmousedown={(e) => e.stopPropagation()}>
 						<button
 							onclick={(e) => copySSHCommand(task, e)}
 							class="flex-1 px-3 py-1.5 text-xs bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 rounded-lg transition-colors flex items-center justify-center gap-1.5"
