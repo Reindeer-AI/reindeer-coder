@@ -17,6 +17,6 @@
 		"check": "npm run --workspace=app check"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "^2.3.8"
+		"@biomejs/biome": "^2.4.0"
 	}
 }

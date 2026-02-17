@@ -12,7 +12,8 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"db:migrate": "node --loader ts-node/esm src/lib/server/db/migrate.ts",
-		"db:migrate:postgres": "node --loader ts-node/esm src/lib/server/db/migrate-postgres.ts"
+		"db:migrate:postgres": "node --loader ts-node/esm src/lib/server/db/migrate-postgres.ts",
+		"local:prod": "tsx scripts/run_local_prod.ts"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-auto": "^7.0.0",
@@ -27,6 +28,7 @@
 		"svelte-check": "^4.3.4",
 		"tailwindcss": "^3.4.18",
 		"ts-node": "^10.9.2",
+		"tsx": "^4.21.0",
 		"typescript": "^5.9.3",
 		"vite": "^7.2.2"
 	},
@@ -43,6 +45,7 @@
 		"@xterm/xterm": "^5.5.0",
 		"auth0": "^5.2.0",
 		"better-sqlite3": "^11.7.0",
+		"google-auth-library": "^10.5.0",
 		"jose": "^6.1.0",
 		"node-pty": "^1.0.0",
 		"pg": "^8.17.1",

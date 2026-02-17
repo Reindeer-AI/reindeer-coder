@@ -39,3 +39,4 @@ terminal_files/
 *.vsix
 scripts/deploy.config
 scripts/github-app-key.pem
+start-local-dev.sh

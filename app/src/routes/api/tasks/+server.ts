@@ -3,7 +3,6 @@ import { extractBearerToken, isAuthDisabled, verifyToken } from '$lib/server/aut
 import { configService } from '$lib/server/config-service';
 import { createTask, getAllTasks, getTasksByUserId } from '$lib/server/db';
 import type { TaskCreateInput } from '$lib/server/db/schema';
-import { needsAttention } from '$lib/server/terminal-storage';
 import { startTask } from '$lib/server/vm/orchestrator';
 import type { RequestHandler } from './$types';
 
@@ -28,11 +27,40 @@ export const GET: RequestHandler = async ({ request }) => {
 	const isAdmin = user.permissions.includes(adminPermission);
 	const tasks = isAdmin ? await getAllTasks() : await getTasksByUserId(user.sub);
 
-	// Add attention flags
-	const tasksWithExtras = tasks.map((task) => ({
-		...task,
-		needsAttention: needsAttention(task.id, task.status),
-	}));
+	// Add AI analysis status (replaces old needsAttention flag)
+	const tasksWithExtras = tasks.map((task) => {
+		// Extract monitoring data from metadata
+		const metadata = task.metadata as any;
+		const monitoring = metadata?.monitoring;
+		const analysis = monitoring?.last_analysis;
+
+		// Determine if task needs attention based on AI analysis
+		// This replaces the old time-based needsAttention check
+		const needsAttention =
+			analysis &&
+			(analysis.state === 'agent_needs_input' ||
+				analysis.state === 'agent_stuck' ||
+				analysis.state === 'agent_idle_waiting' ||
+				analysis.state === 'agent_completed');
+
+		return {
+			...task,
+			// New AI-based attention flag (replaces old logic)
+			needsAttention: needsAttention || false,
+			// Include full analysis for dashboard
+			analysis: analysis
+				? {
+						state: analysis.state,
+						summary: analysis.summary,
+						confidence: analysis.confidence,
+						suggestedActions: analysis.suggestedActions || [],
+						reasoning: analysis.reasoning,
+						timestamp: analysis.timestamp,
+					}
+				: null,
+			lastCheckTimestamp: monitoring?.last_check_timestamp || null,
+		};
+	});
 
 	return json({ tasks: tasksWithExtras });
 };

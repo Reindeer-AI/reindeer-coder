@@ -62,8 +62,19 @@ export class GitLabClient {
 	 * Extract MR URL from terminal output or GitLab URLs
 	 */
 	extractMRUrl(text: string): string | null {
-		const match = text.match(/(https:\/\/gitlab\.com\/[^/]+\/[^/]+\/-\/merge_requests\/\d+)/);
-		return match ? match[1] : null;
+		// Try to find full URL first
+		const urlMatch = text.match(/(https:\/\/gitlab\.com\/[^/]+\/[^/]+\/-\/merge_requests\/\d+)/);
+		if (urlMatch) return urlMatch[1];
+
+		// Try to find URLs that might be line-wrapped or have whitespace
+		const multilineMatch = text.match(
+			/https:\/\/gitlab\.com\/([^\s]+)\/([^\s]+)\/-\/merge_requests\/(\d+)/
+		);
+		if (multilineMatch) {
+			return `https://gitlab.com/${multilineMatch[1]}/${multilineMatch[2]}/-/merge_requests/${multilineMatch[3]}`;
+		}
+
+		return null;
 	}
 
 	/**

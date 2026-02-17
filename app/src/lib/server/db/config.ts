@@ -1,3 +1,4 @@
+import { env } from '$env/dynamic/private';
 import type { DbAdapter } from './adapter';
 import { PostgresAdapter } from './postgres-adapter';
 import { SqliteAdapter } from './sqlite-adapter';
@@ -48,20 +49,25 @@ export async function createAdapter(config: DatabaseConfig): Promise<DbAdapter> 
 
 /**
  * Get database configuration from environment variables
+ * Checks process.env first (for runtime overrides like run_local_prod.ts),
+ * then falls back to $env/dynamic/private (for .env files)
  */
 export function getDatabaseConfigFromEnv(): DatabaseConfig {
-	const dbType = (process.env.DB_TYPE || 'sqlite') as DatabaseType;
+	// Check process.env first to allow runtime overrides (e.g., from run_local_prod.ts)
+	const dbType = (process.env.DB_TYPE || env.DB_TYPE || 'sqlite') as DatabaseType;
 
 	if (dbType === 'sqlite') {
 		return {
 			type: 'sqlite',
-			filename: process.env.DB_FILENAME || 'vibe-coding.db',
+			filename: process.env.DB_FILENAME || env.DB_FILENAME || 'vibe-coding.db',
 		};
 	}
 
 	if (dbType === 'postgres') {
 		// Support connection string or individual parameters
-		const connectionString = process.env.DATABASE_URL || process.env.DB_CONNECTION_STRING;
+		// Check process.env first for runtime overrides
+		const connectionString =
+			process.env.DATABASE_URL || env.DATABASE_URL || env.DB_CONNECTION_STRING;
 
 		if (connectionString) {
 			return {
@@ -72,11 +78,11 @@ export function getDatabaseConfigFromEnv(): DatabaseConfig {
 
 		return {
 			type: 'postgres',
-			host: process.env.DB_HOST || 'localhost',
-			port: parseInt(process.env.DB_PORT || '5432', 10),
-			database: process.env.DB_NAME || 'vibe_coding',
-			user: process.env.DB_USER || 'postgres',
-			password: process.env.DB_PASSWORD,
+			host: process.env.DB_HOST || env.DB_HOST || 'localhost',
+			port: parseInt(process.env.DB_PORT || env.DB_PORT || '5432', 10),
+			database: process.env.DB_NAME || env.DB_NAME || 'vibe_coding',
+			user: process.env.DB_USER || env.DB_USER || 'postgres',
+			password: process.env.DB_PASSWORD !== undefined ? process.env.DB_PASSWORD : env.DB_PASSWORD,
 		};
 	}
 

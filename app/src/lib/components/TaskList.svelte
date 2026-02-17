@@ -15,6 +15,15 @@ let { env }: Props = $props();
 
 interface TaskWithExtras extends Task {
 	needsAttention?: boolean;
+	analysis?: {
+		state: string;
+		summary: string;
+		confidence: number;
+		suggestedActions: string[];
+		reasoning: string;
+		timestamp: string;
+	} | null;
+	lastCheckTimestamp?: string | null;
 }
 
 let tasks = $state<TaskWithExtras[]>([]);
@@ -24,6 +33,50 @@ let pollInterval: ReturnType<typeof setInterval>;
 let filterStatus = $state<'running' | 'all'>('running');
 let filterOwnership = $state<'mine' | 'anyone'>('mine');
 let showCopiedModal = $state(false);
+// Track instruction text and sending state per task
+let taskInstructions = $state<Record<string, string>>({});
+let sendingInstructions = $state<Record<string, boolean>>({});
+
+function fillInstruction(taskId: string, instruction: string, event: Event) {
+	event.preventDefault();
+	event.stopPropagation();
+	taskInstructions[taskId] = instruction;
+}
+
+async function sendInstruction(taskId: string, event: Event) {
+	event.preventDefault();
+	event.stopPropagation();
+
+	const instruction = taskInstructions[taskId];
+	if (!instruction || !instruction.trim()) return;
+
+	sendingInstructions[taskId] = true;
+	try {
+		const response = await fetch(`/api/tasks/${taskId}/send-instruction`, {
+			method: 'POST',
+			headers: {
+				...getAuthHeaders(),
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify({ instruction }),
+		});
+
+		if (!response.ok) {
+			throw new Error('Failed to send instruction');
+		}
+
+		// Clear the instruction after sending
+		taskInstructions[taskId] = '';
+		showCopiedModal = true;
+		setTimeout(() => {
+			showCopiedModal = false;
+		}, 2000);
+	} catch (err) {
+		error = err instanceof Error ? err.message : 'Failed to send instruction';
+	} finally {
+		sendingInstructions[taskId] = false;
+	}
+}
 
 async function copySSHCommand(task: TaskWithExtras, event: Event) {
 	event.preventDefault();
@@ -235,17 +288,16 @@ onDestroy(() => {
 	{:else}
 		<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
 			{#each filteredTasks as task}
-			<a
-				href="/tasks/{task.id}"
+			<div
 				class="block bg-white rounded-xl border border-gray-200 p-5 hover:border-reindeer-green-light hover:shadow-sm transition-all relative"
 			>
-				<div class="flex items-center gap-3 mb-3">
+				<a href="/tasks/{task.id}" class="flex items-center gap-3 mb-3 hover:opacity-80 transition-opacity">
 					<span class="text-2xl">{cliIcons[task.coding_cli]}</span>
 					<div class="min-w-0">
 						<h3 class="text-gray-900 font-medium line-clamp-1">{task.task_description}</h3>
 						<p class="text-gray-500 text-sm truncate">{task.repository}</p>
 					</div>
-				</div>
+				</a>
 				<div class="flex items-center flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
 					<span>{formatDate(task.created_at)}</span>
 					<span class="text-gray-300">•</span>
@@ -262,6 +314,113 @@ onDestroy(() => {
 						</span>
 					{/if}
 				</div>
+
+				{#if task.analysis}
+					<div class="mt-3 pt-3 border-t border-gray-100">
+						<div class="flex items-start gap-2 mb-2">
+							<div class="flex-1">
+								<div class="flex items-center gap-2 mb-1">
+									{#if task.analysis.state === 'agent_completed'}
+										<span class="text-xs font-semibold text-green-700">✓ Completed</span>
+									{:else if task.analysis.state === 'agent_working'}
+										<span class="text-xs font-semibold text-blue-700">⚙️ Working</span>
+									{:else if task.analysis.state === 'agent_needs_input'}
+										<span class="text-xs font-semibold text-orange-700">⚠️ Needs Input</span>
+									{:else if task.analysis.state === 'agent_stuck'}
+										<span class="text-xs font-semibold text-red-700">🔴 Stuck</span>
+									{:else if task.analysis.state === 'agent_idle_waiting'}
+										<span class="text-xs font-semibold text-gray-700">⏸️ Idle</span>
+									{/if}
+									<span class="text-xs text-gray-500">({task.analysis.confidence}% confidence)</span>
+								</div>
+								<p class="text-sm text-gray-700 leading-relaxed">{task.analysis.summary}</p>
+							</div>
+						</div>
+						{#if (task.analysis?.suggestedActions && task.analysis.suggestedActions.length > 0) || (task.metadata as any)?.monitoring?.suggested_instruction}
+							<div class="mt-2">
+								{#if (task.metadata as any)?.monitoring?.suggested_instruction}
+									<div class="mb-3 bg-amber-50 border border-amber-200 rounded-lg p-2">
+										<div class="flex items-center gap-2 mb-2">
+											<span class="text-xs font-semibold text-amber-700">💡 Monitor Suggestion</span>
+											<span class="text-xs text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">Auto-send OFF</span>
+										</div>
+										<button
+											onclick={(e) => fillInstruction(task.id, (task.metadata as any).monitoring.suggested_instruction.instruction, e)}
+											class="w-full text-left text-xs text-gray-700 hover:text-gray-900 font-mono p-2 bg-white rounded hover:bg-amber-50 transition-colors"
+										>
+											{(task.metadata as any).monitoring.suggested_instruction.instruction}
+										</button>
+									</div>
+								{/if}
+
+								{#if task.analysis?.suggestedActions && task.analysis.suggestedActions.length > 0}
+									<p class="text-xs font-medium text-gray-600 mb-2">Quick Actions:</p>
+									<div class="space-y-1.5">
+										{#each task.analysis.suggestedActions as action}
+											<button
+												onclick={(e) => fillInstruction(task.id, action, e)}
+												class="w-full text-left px-3 py-2 text-xs bg-gradient-to-r from-blue-50 to-purple-50 hover:from-blue-100 hover:to-purple-100 text-gray-700 border border-blue-200 rounded-lg transition-all flex items-start gap-2 group"
+											>
+												<span class="text-blue-500 mt-0.5 group-hover:scale-110 transition-transform">→</span>
+												<span class="flex-1">{action}</span>
+												<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+													<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+												</svg>
+											</button>
+										{/each}
+									</div>
+								{/if}
+								<!-- Inline instruction textarea and send button -->
+								<div class="space-y-2 mt-3">
+									<textarea
+										bind:value={taskInstructions[task.id]}
+										onclick={(e) => e.stopPropagation()}
+										onmousedown={(e) => e.stopPropagation()}
+										onfocus={(e) => e.stopPropagation()}
+										class="w-full px-3 py-2 text-xs text-gray-900 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none font-mono placeholder-gray-400"
+										rows="3"
+										placeholder="Click a suggestion above or type your own instruction..."
+									></textarea>
+									<button
+										onclick={(e) => sendInstruction(task.id, e)}
+										disabled={sendingInstructions[task.id] || !taskInstructions[task.id]?.trim()}
+										class="w-full px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white text-xs rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+									>
+										{#if sendingInstructions[task.id]}
+											<div class="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent"></div>
+											<span>Sending...</span>
+										{:else}
+											<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+											</svg>
+											<span>Send Instruction</span>
+										{/if}
+									</button>
+								</div>
+							</div>
+						{/if}
+					</div>
+				{/if}
+
+				{#if (task.metadata as any)?.monitoring?.last_auto_action}
+					<div class="mt-3 pt-3 border-t border-gray-100 bg-blue-50 -mx-5 -mb-5 px-5 pb-5 rounded-b-xl">
+						<div class="flex items-start gap-2">
+							<span class="text-blue-600 text-sm mt-0.5">🤖</span>
+							<div class="flex-1">
+								<div class="flex items-center gap-2 mb-1">
+									<span class="text-xs font-semibold text-blue-700">Autonomous Instruction Sent</span>
+									<span class="text-xs text-gray-500">
+										{new Date((task.metadata as any).monitoring.last_auto_action.timestamp).toLocaleTimeString()}
+									</span>
+								</div>
+								<div class="text-xs text-gray-700 bg-white rounded px-2 py-1.5 font-mono whitespace-pre-wrap">
+									{(task.metadata as any).monitoring.last_auto_action.instruction}
+								</div>
+							</div>
+						</div>
+					</div>
+				{/if}
+
 				{#if task.vm_name && ['running', 'cloning', 'initializing'].includes(task.status)}
 					<div class="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2">
 						<button
@@ -284,7 +443,7 @@ onDestroy(() => {
 						</button>
 					</div>
 				{/if}
-			</a>
+			</div>
 		{/each}
 		</div>
 	{/if}
@@ -296,10 +455,11 @@ onDestroy(() => {
 			<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
 			</svg>
-			<span class="text-lg">Copied to clipboard</span>
+			<span class="text-lg">Instruction sent successfully</span>
 		</div>
 	</div>
 {/if}
+
 
 <style>
 	@keyframes fade-in {

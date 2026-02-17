@@ -390,6 +390,40 @@ export function getActiveConnection(taskId: string): GcloudConnection | undefine
 }
 
 /**
+ * Check if a task has an active SSH connection
+ */
+export function hasActiveConnection(taskId: string): boolean {
+	const state = activeConnections.get(taskId);
+	return state !== undefined && state.status === 'connected';
+}
+
+/**
+ * Get connection info for a task (status, session, last activity)
+ */
+export function getConnectionInfo(taskId: string): {
+	hasConnection: boolean;
+	status: string | null;
+	tmuxSession: string | null;
+	lastActivity: Date | null;
+} {
+	const state = activeConnections.get(taskId);
+	if (!state) {
+		return {
+			hasConnection: false,
+			status: null,
+			tmuxSession: null,
+			lastActivity: null,
+		};
+	}
+	return {
+		hasConnection: true,
+		status: state.status,
+		tmuxSession: state.tmuxSession,
+		lastActivity: state.lastActivity,
+	};
+}
+
+/**
  * Update the last activity timestamp for a connection
  * This should be called whenever we interact with the connection (even just reading)
  */
@@ -493,15 +527,11 @@ async function reconnectToTmux(taskId: string): Promise<boolean> {
 		await new Promise((resolve) => setTimeout(resolve, 2000));
 
 		// Reattach to tmux session (with fallback to screen for backwards compatibility)
+		// Note: No -d flag so multiple clients can connect simultaneously
 		appendTerminalBuffer(taskId, `[system] Reattaching to session: ${state.tmuxSession}\r\n`);
 		conn.write(
-			`tmux attach-session -d -t ${state.tmuxSession} 2>/dev/null || tmux new-session -s ${state.tmuxSession} 2>/dev/null || screen -r ${state.tmuxSession} 2>/dev/null || screen -S ${state.tmuxSession}\n`
+			`tmux attach-session -t ${state.tmuxSession} 2>/dev/null || tmux new-session -s ${state.tmuxSession} 2>/dev/null || screen -r ${state.tmuxSession} 2>/dev/null || screen -S ${state.tmuxSession}\n`
 		);
-
-		await new Promise((resolve) => setTimeout(resolve, 1000));
-
-		// Reload tmux config to ensure mouse support is enabled
-		conn.write(`tmux source-file ~/.tmux.conf 2>/dev/null || true\n`);
 
 		await new Promise((resolve) => setTimeout(resolve, 1000));
 
@@ -658,15 +688,11 @@ export async function manualReconnect(taskId: string): Promise<boolean> {
 		await new Promise((resolve) => setTimeout(resolve, 2000));
 
 		// Reattach to existing session (tmux or screen for backwards compatibility)
+		// Note: No -d flag so multiple clients can connect simultaneously
 		appendTerminalBuffer(taskId, `[system] Reattaching to session: ${tmuxSession}\r\n`);
 		conn.write(
-			`tmux attach-session -d -t ${tmuxSession} 2>/dev/null || tmux new-session -s ${tmuxSession} 2>/dev/null || screen -r ${tmuxSession} 2>/dev/null || screen -S ${tmuxSession}\n`
+			`tmux attach-session -t ${tmuxSession} 2>/dev/null || tmux new-session -s ${tmuxSession} 2>/dev/null || screen -r ${tmuxSession} 2>/dev/null || screen -S ${tmuxSession}\n`
 		);
-
-		await new Promise((resolve) => setTimeout(resolve, 1000));
-
-		// Reload tmux config to ensure mouse support is enabled
-		conn.write(`tmux source-file ~/.tmux.conf 2>/dev/null || true\n`);
 
 		await new Promise((resolve) => setTimeout(resolve, 1000));
 
@@ -995,11 +1021,6 @@ export async function startTask(taskId: string): Promise<void> {
 				desc: 'Verifying CLI installation',
 				statusAfter: 'cloning',
 			},
-			// Reload tmux config now that startup script has completed
-			{
-				cmd: `tmux source-file ~/.tmux.conf 2>/dev/null && echo "Tmux config loaded (mouse support enabled)" || echo "Tmux config not found, using defaults"`,
-				desc: 'Loading tmux configuration',
-			},
 			// Setup CLI and environment
 			...cliSetupCommands,
 			// Clone using git credential helper (configured during startup)
@@ -1196,9 +1217,40 @@ export async function sendInstruction(taskId: string, instruction: string): Prom
 		throw new Error(`Connection is ${connState.status}. Please wait for reconnection.`);
 	}
 
-	// Write instruction to the terminal
+	// Send instruction using tmux send-keys via SSH exec
 	console.log(`[sendInstruction] Sending to task ${taskId}: ${instruction}`);
-	connState.conn.write(`${instruction}\n`);
+
+	// Execute tmux send-keys with -l (literal) flag for text, then Enter separately
+	// The -l flag sends text literally without interpreting special keys
+	// Add a small delay (0.1s) between typing and pressing Enter for reliability
+	// Then we send Enter as a separate command to actually submit the input
+	const escapedInstruction = instruction.replace(/'/g, "'\\''");
+	const tmuxCommand = `tmux send-keys -l -t ${connState.tmuxSession} '${escapedInstruction}' && sleep 0.1 && tmux send-keys -t ${connState.tmuxSession} Enter`;
+
+	// Use sudo to run as reindeer-vibe user
+	const fullCommand = `sudo su - reindeer-vibe -c '${tmuxCommand.replace(/'/g, "'\\''")}'`;
+
+	try {
+		console.log(`[sendInstruction] Executing: ${fullCommand}`);
+		const result = await execOnVM(connState.vmName, fullCommand, connState.zone, connState.project);
+
+		if (result.exitCode !== 0) {
+			console.error(
+				`[sendInstruction] Command failed with exit code ${result.exitCode}:`,
+				result.stderr
+			);
+			throw new Error(`Failed to send instruction: ${result.stderr}`);
+		}
+
+		console.log(`[sendInstruction] Successfully sent to task ${taskId}`);
+		if (result.stdout) {
+			console.log(`[sendInstruction] Output: ${result.stdout}`);
+		}
+	} catch (error) {
+		console.error(`[sendInstruction] Failed to send to task ${taskId}:`, error);
+		throw error;
+	}
+
 	connState.lastActivity = new Date();
 	appendTerminalBuffer(taskId, `\r\n[user] ${instruction}\r\n`);
 }
