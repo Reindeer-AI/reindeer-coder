@@ -377,7 +377,7 @@ onDestroy(() => {
 										onclick={(e) => e.stopPropagation()}
 										onmousedown={(e) => e.stopPropagation()}
 										onfocus={(e) => e.stopPropagation()}
-										class="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none font-mono"
+										class="w-full px-3 py-2 text-xs text-gray-900 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none font-mono placeholder-gray-400"
 										rows="3"
 										placeholder="Click a suggestion above or type your own instruction..."
 									></textarea>
