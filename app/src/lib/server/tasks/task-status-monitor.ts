@@ -15,13 +15,12 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { env } from '$env/dynamic/private';
-import { getAllTasks, getTaskById, type Task, type TaskMetadata, updateTaskMetadata } from '../db';
+import { getAllTasks, getTaskById, type Task, updateTaskMetadata } from '../db';
 import { getAnthropicApiKey } from '../secrets';
 import { readTerminalFile } from '../terminal-storage';
 import {
 	getActiveConnection,
 	getConnectionInfo,
-	hasActiveConnection,
 	manualReconnect,
 	sendInstruction,
 } from '../vm/orchestrator';
@@ -58,6 +57,11 @@ interface TaskMonitoringMetadata {
 			state: TaskAnalysis['state'];
 			instruction: string;
 		};
+		suggested_instruction?: {
+			timestamp: string;
+			state: TaskAnalysis['state'];
+			instruction: string;
+		};
 		last_code_review_check?: {
 			timestamp: string;
 			review_sha?: string;
@@ -75,9 +79,13 @@ export class TaskStatusMonitor {
 	private initPromise: Promise<void> | null = null;
 	private codeReviewHandler: CodeReviewHandler;
 
+	private autoSendEnabled: boolean;
+
 	constructor() {
 		// Default: check every 60 seconds
 		this.pollIntervalMs = parseInt(env.TASK_MONITOR_POLL_INTERVAL_MS || '60000', 10);
+		// Default: auto-send is DISABLED for safety
+		this.autoSendEnabled = env.TASK_MONITOR_AUTO_SEND_INSTRUCTIONS === 'true';
 		this.codeReviewHandler = new CodeReviewHandler();
 	}
 
@@ -103,6 +111,9 @@ export class TaskStatusMonitor {
 	async start(): Promise<void> {
 		console.log('[TaskStatusMonitor] Starting monitor...');
 		console.log(`[TaskStatusMonitor] Poll interval: ${this.pollIntervalMs}ms`);
+		console.log(
+			`[TaskStatusMonitor] Auto-send instructions: ${this.autoSendEnabled ? 'ENABLED' : 'DISABLED (safe mode)'}`
+		);
 
 		await this.initialize();
 		this.isRunning = true;
@@ -517,7 +528,7 @@ IMPORTANT:
 								});
 
 								// If we got review instruction, it means there are unresolved comments
-								if (reviewInstruction && reviewInstruction.includes('⚠️')) {
+								if (reviewInstruction?.includes('⚠️')) {
 									console.log(
 										`[TaskStatusMonitor] Found unresolved code review comments for task ${task.id}`
 									);
@@ -570,6 +581,25 @@ IMPORTANT:
 			}
 
 			if (instruction) {
+				if (!this.autoSendEnabled) {
+					console.log(
+						`[TaskStatusMonitor] Would send instruction to task ${task.id} (state: ${analysis.state}), but auto-send is DISABLED`
+					);
+					console.log(`[TaskStatusMonitor] Suggested instruction: ${instruction}`);
+					// Store the suggested instruction even if not sent
+					await updateTaskMetadata(task.id, {
+						monitoring: {
+							...metadata?.monitoring,
+							suggested_instruction: {
+								timestamp: new Date().toISOString(),
+								state: analysis.state,
+								instruction: instruction,
+							},
+						},
+					});
+					return;
+				}
+
 				console.log(
 					`[TaskStatusMonitor] Sending autonomous instruction to task ${task.id} (state: ${analysis.state})`
 				);
@@ -602,7 +632,7 @@ IMPORTANT:
 	/**
 	 * Automatically continue an agent with a gentle prompt
 	 */
-	async autoContinueAgent(task: Task, analysis: TaskAnalysis): Promise<boolean> {
+	async autoContinueAgent(task: Task, _analysis: TaskAnalysis): Promise<boolean> {
 		try {
 			// Check if we have an active connection
 			const conn = getActiveConnection(task.id);
