@@ -110,66 +110,64 @@ export class PostgresAdapter implements DbAdapter {
 
 	/**
 	 * Create adapter from connection string
-	 * Supports standard postgresql:// URLs and CloudSQL with IAM authentication
+	 * Supports:
+	 * - CloudSQL unix socket paths: /cloudsql/PROJECT:REGION:INSTANCE (production on Cloud Run)
+	 * - PostgreSQL URLs with IAM auth: postgresql://user@...iam/db (local dev with CLOUDSQL_INSTANCE)
+	 * - Standard PostgreSQL connection strings: postgresql://user:pass@host/db
 	 */
 	static async fromConnectionString(connectionString: string): Promise<PostgresAdapter> {
-		// Check if this is IAM authentication
-		const isIAMAuth = connectionString.includes('reindeer-vibe.iam');
+		// Production Cloud Run: CloudSQL unix socket path with IAM auth
+		if (connectionString.startsWith('/cloudsql/')) {
+			const instanceConnectionName = connectionString.replace('/cloudsql/', '');
 
-		if (isIAMAuth) {
-			// Cloud SQL Connector + IAM auth (both production and local dev)
+			console.log('[db] Production: Connecting with Cloud SQL Connector + IAM auth');
+			console.log(`[db]   Instance: ${instanceConnectionName}`);
+			console.log(`[db]   User: ${process.env.DB_USER}`);
+			console.log(`[db]   Database: ${process.env.DB_NAME || 'vibe_coding'}`);
+
+			const connector = new Connector();
+			const clientOpts = await connector.getOptions({
+				instanceConnectionName,
+				authType: AuthTypes.IAM,
+			});
+
+			const config: pg.PoolConfig = {
+				...clientOpts,
+				database: process.env.DB_NAME || 'vibe_coding',
+				user: process.env.DB_USER,
+			};
+
+			return new PostgresAdapter(config, connector);
+		}
+
+		// Local dev: PostgreSQL URL with IAM auth via Cloud SQL Connector + impersonation
+		if (connectionString.includes('.iam') && process.env.CLOUDSQL_INSTANCE) {
 			const url = new URL(connectionString.replace('postgresql://', 'postgres://'));
 			const username = decodeURIComponent(url.username);
 			const database = url.pathname.slice(1);
+			const instanceConnectionName = process.env.CLOUDSQL_INSTANCE;
 
-			// Get instance connection name from env var
-			const instanceConnectionName = process.env.CLOUDSQL_INSTANCE || '';
+			const { GoogleAuth, Impersonated } = await import('google-auth-library');
+			const sourceAuth = new GoogleAuth({
+				scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+			});
+			const sourceClient = await sourceAuth.getClient();
+			const targetSA = username + '.gserviceaccount.com';
 
-			if (!instanceConnectionName) {
-				throw new Error(
-					'CloudSQL instance connection name required for IAM auth. ' +
-						'Set CLOUDSQL_INSTANCE env var.'
-				);
-			}
+			console.log('[db] Local dev: Connecting with Cloud SQL Connector + IAM auth (impersonation)');
+			console.log(`[db]   Instance: ${instanceConnectionName}`);
+			console.log(`[db]   User: ${username}`);
+			console.log(`[db]   Target SA: ${targetSA}`);
+			console.log(`[db]   Database: ${database}`);
 
-			const NODE_ENV = process.env.NODE_ENV || 'development';
-			let connector: Connector;
+			const impersonatedClient = new Impersonated({
+				sourceClient,
+				targetPrincipal: targetSA,
+				targetScopes: ['https://www.googleapis.com/auth/cloud-platform'],
+				lifetime: 3600,
+			});
 
-			if (NODE_ENV !== 'production') {
-				// Local dev: use impersonated credentials via Cloud SQL Connector
-				const { GoogleAuth, Impersonated } = await import('google-auth-library');
-				const sourceAuth = new GoogleAuth({
-					scopes: ['https://www.googleapis.com/auth/cloud-platform'],
-				});
-				const sourceClient = await sourceAuth.getClient();
-				const targetSA = username + '.gserviceaccount.com';
-
-				console.log(
-					'[db] Local dev: Connecting with Cloud SQL Connector + IAM auth (impersonation)'
-				);
-				console.log(`[db]   Instance: ${instanceConnectionName}`);
-				console.log(`[db]   User: ${username}`);
-				console.log(`[db]   Target SA: ${targetSA}`);
-				console.log(`[db]   Database: ${database}`);
-
-				const impersonatedClient = new Impersonated({
-					sourceClient,
-					targetPrincipal: targetSA,
-					targetScopes: ['https://www.googleapis.com/auth/cloud-platform'],
-					lifetime: 3600,
-				});
-
-				connector = new Connector({ auth: impersonatedClient });
-			} else {
-				// Production: Cloud Run with workload identity (ADC)
-				console.log('[db] Production: Connecting with Cloud SQL Connector + IAM auth');
-				console.log(`[db]   Instance: ${instanceConnectionName}`);
-				console.log(`[db]   User: ${username}`);
-				console.log(`[db]   Database: ${database}`);
-
-				connector = new Connector();
-			}
-
+			const connector = new Connector({ auth: impersonatedClient });
 			const clientOpts = await connector.getOptions({
 				instanceConnectionName,
 				authType: AuthTypes.IAM,
