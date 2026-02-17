@@ -33,45 +33,40 @@ let pollInterval: ReturnType<typeof setInterval>;
 let filterStatus = $state<'running' | 'all'>('running');
 let filterOwnership = $state<'mine' | 'anyone'>('mine');
 let showCopiedModal = $state(false);
-let showInstructionModal = $state(false);
-let currentTaskId = $state<string | null>(null);
-let editableInstruction = $state<string>('');
-let sendingInstruction = $state(false);
+// Track instruction text and sending state per task
+let taskInstructions = $state<Record<string, string>>({});
+let sendingInstructions = $state<Record<string, boolean>>({});
 
-function openInstructionModal(taskId: string, instruction: string, event: Event) {
+function fillInstruction(taskId: string, instruction: string, event: Event) {
 	event.preventDefault();
 	event.stopPropagation();
-	currentTaskId = taskId;
-	editableInstruction = instruction;
-	showInstructionModal = true;
+	taskInstructions[taskId] = instruction;
 }
 
-function closeInstructionModal() {
-	showInstructionModal = false;
-	currentTaskId = null;
-	editableInstruction = '';
-	sendingInstruction = false;
-}
+async function sendInstruction(taskId: string, event: Event) {
+	event.preventDefault();
+	event.stopPropagation();
 
-async function sendInstruction() {
-	if (!currentTaskId || !editableInstruction.trim()) return;
+	const instruction = taskInstructions[taskId];
+	if (!instruction || !instruction.trim()) return;
 
-	sendingInstruction = true;
+	sendingInstructions[taskId] = true;
 	try {
-		const response = await fetch(`/api/tasks/${currentTaskId}/send-instruction`, {
+		const response = await fetch(`/api/tasks/${taskId}/send-instruction`, {
 			method: 'POST',
 			headers: {
 				...getAuthHeaders(),
 				'Content-Type': 'application/json',
 			},
-			body: JSON.stringify({ instruction: editableInstruction }),
+			body: JSON.stringify({ instruction }),
 		});
 
 		if (!response.ok) {
 			throw new Error('Failed to send instruction');
 		}
 
-		closeInstructionModal();
+		// Clear the instruction after sending
+		taskInstructions[taskId] = '';
 		showCopiedModal = true;
 		setTimeout(() => {
 			showCopiedModal = false;
@@ -79,7 +74,7 @@ async function sendInstruction() {
 	} catch (err) {
 		error = err instanceof Error ? err.message : 'Failed to send instruction';
 	} finally {
-		sendingInstruction = false;
+		sendingInstructions[taskId] = false;
 	}
 }
 
@@ -348,7 +343,7 @@ onDestroy(() => {
 								<div class="space-y-1.5">
 									{#each task.analysis.suggestedActions as action}
 										<button
-											onclick={(e) => openInstructionModal(task.id, action, e)}
+											onclick={(e) => fillInstruction(task.id, action, e)}
 											class="w-full text-left px-3 py-2 text-xs bg-gradient-to-r from-blue-50 to-purple-50 hover:from-blue-100 hover:to-purple-100 text-gray-700 border border-blue-200 rounded-lg transition-all flex items-start gap-2 group"
 										>
 											<span class="text-blue-500 mt-0.5 group-hover:scale-110 transition-transform">→</span>
@@ -358,6 +353,31 @@ onDestroy(() => {
 											</svg>
 										</button>
 									{/each}
+								</div>
+								<!-- Inline instruction textarea and send button -->
+								<div class="space-y-2 mt-3">
+									<textarea
+										bind:value={taskInstructions[task.id]}
+										onclick={(e) => e.stopPropagation()}
+										class="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none font-mono"
+										rows="3"
+										placeholder="Edit instruction or type your own..."
+									></textarea>
+									<button
+										onclick={(e) => sendInstruction(task.id, e)}
+										disabled={sendingInstructions[task.id] || !taskInstructions[task.id]?.trim()}
+										class="w-full px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white text-xs rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+									>
+										{#if sendingInstructions[task.id]}
+											<div class="animate-spin rounded-full h-3 w-3 border-2 border-white border-t-transparent"></div>
+											<span>Sending...</span>
+										{:else}
+											<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+												<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+											</svg>
+											<span>Send Instruction</span>
+										{/if}
+									</button>
 								</div>
 							</div>
 						{/if}
@@ -380,7 +400,7 @@ onDestroy(() => {
 									{(task.metadata as any).monitoring.suggested_instruction.instruction}
 								</div>
 								<button
-									onclick={(e) => openInstructionModal(task.id, (task.metadata as any).monitoring.suggested_instruction.instruction, e)}
+									onclick={(e) => fillInstruction(task.id, (task.metadata as any).monitoring.suggested_instruction.instruction, e)}
 									class="px-3 py-1.5 text-xs bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-lg transition-all flex items-center gap-1.5"
 								>
 									<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -449,57 +469,6 @@ onDestroy(() => {
 	</div>
 {/if}
 
-{#if showInstructionModal}
-	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onclick={closeInstructionModal}>
-		<div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 animate-fade-in" onclick={(e) => e.stopPropagation()}>
-			<div class="flex items-start justify-between mb-4">
-				<div>
-					<h3 class="text-lg font-semibold text-gray-900">Send Instruction to Agent</h3>
-					<p class="text-sm text-gray-500 mt-1">Edit the instruction below and send it to the agent</p>
-				</div>
-				<button onclick={closeInstructionModal} class="text-gray-400 hover:text-gray-600 transition-colors">
-					<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-					</svg>
-				</button>
-			</div>
-
-			<div class="mb-4">
-				<label class="block text-sm font-medium text-gray-700 mb-2">Instruction Text</label>
-				<textarea
-					bind:value={editableInstruction}
-					class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none font-mono text-sm"
-					rows="6"
-					placeholder="Enter instruction to send to the agent..."
-				></textarea>
-			</div>
-
-			<div class="flex items-center justify-end gap-3">
-				<button
-					onclick={closeInstructionModal}
-					class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 transition-colors"
-				>
-					Cancel
-				</button>
-				<button
-					onclick={sendInstruction}
-					disabled={sendingInstruction || !editableInstruction.trim()}
-					class="px-6 py-2 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-				>
-					{#if sendingInstruction}
-						<div class="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
-						<span>Sending...</span>
-					{:else}
-						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-						</svg>
-						<span>Send Instruction</span>
-					{/if}
-				</button>
-			</div>
-		</div>
-	</div>
-{/if}
 
 <style>
 	@keyframes fade-in {
