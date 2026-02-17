@@ -94,7 +94,7 @@ export class PostgresAdapter implements DbAdapter {
 
 				if (attempt < PostgresAdapter.MAX_RETRIES) {
 					// Exponential backoff: 100ms, 200ms, 400ms...
-					const delay = PostgresAdapter.BASE_DELAY_MS * Math.pow(2, attempt - 1);
+					const delay = PostgresAdapter.BASE_DELAY_MS * 2 ** (attempt - 1);
 					await sleep(delay);
 
 					// On second retry, recreate the pool in case it's completely dead
@@ -110,17 +110,21 @@ export class PostgresAdapter implements DbAdapter {
 
 	/**
 	 * Create adapter from connection string
-	 * Supports standard postgresql:// URLs and CloudSQL unix socket paths with IAM authentication
+	 * Supports:
+	 * - CloudSQL unix socket paths: /cloudsql/PROJECT:REGION:INSTANCE (production on Cloud Run)
+	 * - PostgreSQL URLs with IAM auth: postgresql://user@...iam/db (local dev with CLOUDSQL_INSTANCE)
+	 * - Standard PostgreSQL connection strings: postgresql://user:pass@host/db
 	 */
 	static async fromConnectionString(connectionString: string): Promise<PostgresAdapter> {
-		// Check if this is a CloudSQL unix socket connection
-		// Format: /cloudsql/PROJECT:REGION:INSTANCE or unix socket path
+		// Production Cloud Run: CloudSQL unix socket path with IAM auth
 		if (connectionString.startsWith('/cloudsql/')) {
-			// Extract instance connection name from path
-			// Format: /cloudsql/PROJECT:REGION:INSTANCE
 			const instanceConnectionName = connectionString.replace('/cloudsql/', '');
 
-			// Use Cloud SQL Connector for IAM authentication
+			console.log('[db] Production: Connecting with Cloud SQL Connector + IAM auth');
+			console.log(`[db]   Instance: ${instanceConnectionName}`);
+			console.log(`[db]   User: ${process.env.DB_USER}`);
+			console.log(`[db]   Database: ${process.env.DB_NAME || 'vibe_coding'}`);
+
 			const connector = new Connector();
 			const clientOpts = await connector.getOptions({
 				instanceConnectionName,
@@ -136,7 +140,49 @@ export class PostgresAdapter implements DbAdapter {
 			return new PostgresAdapter(config, connector);
 		}
 
-		// Standard PostgreSQL connection string
+		// Local dev: PostgreSQL URL with IAM auth via Cloud SQL Connector + impersonation
+		if (connectionString.includes('.iam') && process.env.CLOUDSQL_INSTANCE) {
+			const url = new URL(connectionString.replace('postgresql://', 'postgres://'));
+			const username = decodeURIComponent(url.username);
+			const database = url.pathname.slice(1);
+			const instanceConnectionName = process.env.CLOUDSQL_INSTANCE;
+
+			const { GoogleAuth, Impersonated } = await import('google-auth-library');
+			const sourceAuth = new GoogleAuth({
+				scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+			});
+			const sourceClient = await sourceAuth.getClient();
+			const targetSA = username + '.gserviceaccount.com';
+
+			console.log('[db] Local dev: Connecting with Cloud SQL Connector + IAM auth (impersonation)');
+			console.log(`[db]   Instance: ${instanceConnectionName}`);
+			console.log(`[db]   User: ${username}`);
+			console.log(`[db]   Target SA: ${targetSA}`);
+			console.log(`[db]   Database: ${database}`);
+
+			const impersonatedClient = new Impersonated({
+				sourceClient,
+				targetPrincipal: targetSA,
+				targetScopes: ['https://www.googleapis.com/auth/cloud-platform'],
+				lifetime: 3600,
+			});
+
+			const connector = new Connector({ auth: impersonatedClient });
+			const clientOpts = await connector.getOptions({
+				instanceConnectionName,
+				authType: AuthTypes.IAM,
+			});
+
+			const config: pg.PoolConfig = {
+				...clientOpts,
+				user: username,
+				database,
+			};
+
+			return new PostgresAdapter(config, connector);
+		}
+
+		// Standard PostgreSQL connection string (non-IAM)
 		return new PostgresAdapter({
 			connectionString,
 		});
