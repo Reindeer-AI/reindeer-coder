@@ -1760,6 +1760,12 @@ function generateCliSetupCommands(
 				cmd: `mkdir -p ~/.claude && API_KEY_SUFFIX=$(echo $ANTHROPIC_API_KEY | tail -c 21) && echo '{"numStartups":1,"theme":"dark","autoUpdaterStatus":"disabled","hasCompletedOnboarding":true,"shiftEnterKeyBindingInstalled":true,"bypassPermissionsModeAccepted":true,"customApiKeyResponses":{"approved":["'$API_KEY_SUFFIX'"],"rejected":[]}}' > ~/.claude.json`,
 				desc: 'Creating Claude Code settings to skip login and onboarding',
 			},
+			{
+				// Configure Claude Code plugin marketplace and install Reindeer plugins
+				// Writes ~/.claude/settings.json with the reindeer marketplace and enabled plugins
+				cmd: `echo '{"extraKnownMarketplaces":{"reindeer":{"source":{"source":"git","url":"git@gitlab.com:reindeerai/claude-reindeer.git"}}},"enabledPlugins":{"eng@reindeer":true,"tools@reindeer":true,"customers@reindeer":true}}' > ~/.claude/settings.json`,
+				desc: 'Configuring Claude Code plugin marketplace and Reindeer plugins',
+			},
 			// Deploy MCP configuration if available
 			...(mcpConfigBase64
 				? [
