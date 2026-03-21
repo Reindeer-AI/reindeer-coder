@@ -707,27 +707,10 @@ class LinearAgentMonitor {
 		);
 		const codingCli = (defaultCli as 'claude-code' | 'gemini' | 'codex') || 'claude-code';
 
+		let taskId: string;
 		try {
 			// Trigger the Vibe Coding task
-			const taskId = await this.triggerVibeTask(issue, repoUrl, baseBranch, codingCli);
-
-			// Add initial comment with task link
-			await this.addCommentToIssue(
-				issue.id,
-				`🚀 **Vibe Coding task started**\n\n` +
-					`Repository: \`${repoName}\`\n` +
-					`Branch: \`${baseBranch}\`\n` +
-					`Agent: \`${codingCli}\`\n\n` +
-					`[View Live Progress →](${env.APP_URL}/tasks/${taskId})\n\n` +
-					`Connection commands will be posted once the VM is provisioned...\n\n` +
-					`---\n🤖 *Claude Code*`
-			);
-
-			console.log(`[LinearAgentMonitor] Vibe task ${taskId} started for ${issue.identifier}`);
-
-			// Note: Keep Agent/working label - it will be updated by the vibe task workflow
-			// The VM orchestrator or completion handler should update labels when done
-			return true; // Successfully started
+			taskId = await this.triggerVibeTask(issue, repoUrl, baseBranch, codingCli);
 		} catch (error) {
 			console.error(`[LinearAgentMonitor] Implement task failed for ${issue.identifier}:`, error);
 			await this.addCommentToIssue(
@@ -739,6 +722,31 @@ class LinearAgentMonitor {
 			await this.addLabelToIssue(issue.id, 'Agent/blocked');
 			throw error;
 		}
+
+		console.log(`[LinearAgentMonitor] Vibe task ${taskId} started for ${issue.identifier}`);
+
+		// Add initial comment with task link — non-fatal if Linear API is flaky
+		try {
+			await this.addCommentToIssue(
+				issue.id,
+				`🚀 **Vibe Coding task started**\n\n` +
+					`Repository: \`${repoName}\`\n` +
+					`Branch: \`${baseBranch}\`\n` +
+					`Agent: \`${codingCli}\`\n\n` +
+					`[View Live Progress →](${env.APP_URL}/tasks/${taskId})\n\n` +
+					`Connection commands will be posted once the VM is provisioned...\n\n` +
+					`---\n🤖 *Claude Code*`
+			);
+		} catch (commentError) {
+			console.warn(
+				`[LinearAgentMonitor] Failed to post start comment for ${issue.identifier} (task still running):`,
+				commentError
+			);
+		}
+
+		// Note: Keep Agent/working label - it will be updated by the vibe task workflow
+		// The VM orchestrator or completion handler should update labels when done
+		return true; // Successfully started
 	}
 
 	private async executeFixImplementationTask(
