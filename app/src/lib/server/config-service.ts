@@ -177,13 +177,13 @@ export const DEFAULT_CONFIG = {
 		is_secret: false,
 	},
 	'git.base_url': {
-		value: 'https://gitlab.com',
+		value: 'https://github.com',
 		description: 'Git repository base URL (e.g., https://github.com or https://gitlab.com)',
 		category: 'Git',
 		is_secret: false,
 	},
 	'git.org': {
-		value: 'your-org',
+		value: 'Reindeer-AI',
 		description: 'Git organization/group name',
 		category: 'Git',
 		is_secret: false,
