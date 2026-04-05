@@ -1781,7 +1781,12 @@ echo 'experimental_instructions_file = "/home/${vmUser}/.codex/instructions.md"'
  * Note: The initial task is sent separately via stdin after the agent starts
  */
 function generateAgentStartCommand(codingCli: string, systemPrompt?: string | null): string {
-	const escapedPrompt = systemPrompt?.replace(/"/g, '\\"') || '';
+	// Escape all bash-special characters inside double quotes: \ " $ `
+	const escapedPrompt = systemPrompt
+		?.replace(/\\/g, '\\\\')
+		.replace(/"/g, '\\"')
+		.replace(/\$/g, '\\$')
+		.replace(/`/g, '\\`') || '';
 
 	const commands: Record<string, string> = {
 		// Start Claude in interactive mode with --dangerously-skip-permissions
