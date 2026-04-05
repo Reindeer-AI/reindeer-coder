@@ -11,7 +11,19 @@ import {
 import type { DbRow, SqlValue } from './adapter';
 import { createAdapter, getDatabaseConfigFromEnv } from './config';
 import type { PostgresAdapter } from './postgres-adapter';
-import type { Task, TaskCreateInput, TaskMetadata, TaskStatus } from './schema';
+import type {
+	Config,
+	ConfigCreateInput,
+	Environment,
+	EnvironmentConnectionInfo,
+	EnvironmentCreateInput,
+	EnvironmentStatus,
+	Spec,
+	Task,
+	TaskCreateInput,
+	TaskMetadata,
+	TaskStatus,
+} from './schema';
 import { SqlBuilder } from './sql-builder';
 import type { SqliteAdapter } from './sqlite-adapter';
 
@@ -876,7 +888,7 @@ export async function markAttentionCheckPosted(id: string): Promise<void> {
 /**
  * Get all configuration values
  */
-export async function getAllConfig(): Promise<Array<import('./schema').Config>> {
+export async function getAllConfig(): Promise<Config[]> {
 	const sql = 'SELECT * FROM config ORDER BY category, key';
 
 	if (isAsync) {
@@ -884,20 +896,20 @@ export async function getAllConfig(): Promise<Array<import('./schema').Config>> 
 		return rows.map((row) => ({
 			...row,
 			is_secret: dbConfig.type === 'postgres' ? row.is_secret : row.is_secret === 1,
-		})) as Array<import('./schema').Config>;
+		})) as Array<Config>;
 	} else {
 		const rows = (adapter as SqliteAdapter).all(sql, []);
 		return rows.map((row) => ({
 			...row,
 			is_secret: row.is_secret === 1,
-		})) as Array<import('./schema').Config>;
+		})) as Array<Config>;
 	}
 }
 
 /**
  * Get a configuration value by key
  */
-export async function getConfigByKey(key: string): Promise<import('./schema').Config | null> {
+export async function getConfigByKey(key: string): Promise<Config | null> {
 	const sql = 'SELECT * FROM config WHERE key = ?';
 
 	if (isAsync) {
@@ -906,21 +918,21 @@ export async function getConfigByKey(key: string): Promise<import('./schema').Co
 		return {
 			...row,
 			is_secret: row.is_secret,
-		} as import('./schema').Config;
+		} as Config;
 	} else {
 		const row = (adapter as SqliteAdapter).get(sql, [key]);
 		if (!row) return null;
 		return {
 			...row,
 			is_secret: row.is_secret === 1,
-		} as import('./schema').Config;
+		} as Config;
 	}
 }
 
 /**
  * Set or update a configuration value
  */
-export async function setConfig(input: import('./schema').ConfigCreateInput): Promise<void> {
+export async function setConfig(input: ConfigCreateInput): Promise<void> {
 	const now = sqlBuilder.now();
 	const isSecretValue =
 		dbConfig.type === 'postgres' ? (input.is_secret ?? false) : input.is_secret ? 1 : 0;
@@ -983,10 +995,289 @@ export async function deleteConfig(key: string): Promise<void> {
 	}
 }
 
+/**
+ * ============================================================================
+ * Spec Management Functions
+ * ============================================================================
+ */
+
+/**
+ * Create a new spec
+ */
+export async function createSpec(userId: string, name: string, secretPath: string): Promise<Spec> {
+	const id = uuidv4();
+	const sql = `
+		INSERT INTO specs (id, user_id, name, secret_path)
+		VALUES (?, ?, ?, ?)
+	`;
+	const params = [id, userId, name, secretPath];
+
+	if (isAsync) {
+		await (adapter as PostgresAdapter).run(sql, params);
+	} else {
+		adapter.run(sql, params);
+	}
+
+	const spec = await getSpecById(id);
+	if (!spec) {
+		throw new Error(`Failed to retrieve created spec ${id}`);
+	}
+	return spec;
+}
+
+/**
+ * Get a spec by ID
+ */
+export async function getSpecById(id: string): Promise<Spec | undefined> {
+	const sql = 'SELECT * FROM specs WHERE id = ?';
+	let row: DbRow | undefined;
+
+	if (isAsync) {
+		row = await (adapter as PostgresAdapter).get(sql, [id]);
+	} else {
+		row = (adapter as SqliteAdapter).get(sql, [id]) as DbRow | undefined;
+	}
+
+	return row as Spec | undefined;
+}
+
+/**
+ * Get all specs for a user
+ */
+export async function getSpecsByUserId(userId: string): Promise<Spec[]> {
+	const sql = 'SELECT * FROM specs WHERE user_id = ? ORDER BY created_at DESC';
+
+	let rows: DbRow[];
+	if (isAsync) {
+		rows = await (adapter as PostgresAdapter).all(sql, [userId]);
+	} else {
+		rows = (adapter as SqliteAdapter).all(sql, [userId]) as DbRow[];
+	}
+	return rows as unknown as Spec[];
+}
+
+/**
+ * Update a spec (name and/or secret_path)
+ */
+export async function updateSpec(
+	id: string,
+	updates: { name?: string; secret_path?: string }
+): Promise<void> {
+	const setClauses: string[] = [];
+	const params: SqlValue[] = [];
+
+	if (updates.name !== undefined) {
+		setClauses.push('name = ?');
+		params.push(updates.name);
+	}
+	if (updates.secret_path !== undefined) {
+		setClauses.push('secret_path = ?');
+		params.push(updates.secret_path);
+	}
+
+	if (setClauses.length === 0) return;
+
+	setClauses.push(`updated_at = ${sqlBuilder.now()}`);
+	params.push(id);
+
+	const sql = `UPDATE specs SET ${setClauses.join(', ')} WHERE id = ?`;
+
+	if (isAsync) {
+		await (adapter as PostgresAdapter).run(sql, params);
+	} else {
+		adapter.run(sql, params);
+	}
+}
+
+/**
+ * Delete a spec by ID
+ */
+export async function deleteSpec(id: string): Promise<void> {
+	const sql = 'DELETE FROM specs WHERE id = ?';
+
+	if (isAsync) {
+		await (adapter as PostgresAdapter).run(sql, [id]);
+	} else {
+		adapter.run(sql, [id]);
+	}
+}
+
+/**
+ * Check if a spec has any active (non-deleted) environments
+ */
+export async function specHasActiveEnvironments(specId: string): Promise<boolean> {
+	const sql =
+		"SELECT COUNT(*) as count FROM environments WHERE spec_id = ? AND status != 'deleted'";
+
+	let row: DbRow | undefined;
+	if (isAsync) {
+		row = await (adapter as PostgresAdapter).get(sql, [specId]);
+	} else {
+		row = (adapter as SqliteAdapter).get(sql, [specId]) as DbRow | undefined;
+	}
+
+	return (row?.count as number) > 0;
+}
+
+/**
+ * ============================================================================
+ * Environment Management Functions
+ * ============================================================================
+ */
+
+function parseEnvironmentRow(row: DbRow): Environment {
+	if (row?.connection_info && typeof row.connection_info === 'string') {
+		try {
+			row.connection_info = JSON.parse(row.connection_info);
+		} catch {
+			row.connection_info = null;
+		}
+	}
+	if (row?.metadata && typeof row.metadata === 'string') {
+		try {
+			row.metadata = JSON.parse(row.metadata);
+		} catch {
+			row.metadata = null;
+		}
+	}
+	return row as unknown as Environment;
+}
+
+function parseEnvironmentRows(rows: DbRow[]): Environment[] {
+	return rows.map(parseEnvironmentRow);
+}
+
+/**
+ * Create a new environment
+ */
+export async function createEnvironment(
+	userId: string,
+	userEmail: string,
+	input: EnvironmentCreateInput,
+	specName: string
+): Promise<Environment> {
+	const id = uuidv4();
+	const name = input.name || `${specName}-${id.slice(0, 8)}`;
+	const sql = `
+		INSERT INTO environments (id, user_id, user_email, name, spec_id, status, vm_machine_type)
+		VALUES (?, ?, ?, ?, ?, 'pending', ?)
+	`;
+	const params = [id, userId, userEmail, name, input.spec_id, input.machine_type || null];
+
+	if (isAsync) {
+		await (adapter as PostgresAdapter).run(sql, params);
+	} else {
+		adapter.run(sql, params);
+	}
+
+	const environment = await getEnvironmentById(id);
+	if (!environment) {
+		throw new Error(`Failed to retrieve created environment ${id}`);
+	}
+	return environment;
+}
+
+/**
+ * Get an environment by ID
+ */
+export async function getEnvironmentById(id: string): Promise<Environment | undefined> {
+	const sql = 'SELECT * FROM environments WHERE id = ?';
+	let row: DbRow | undefined;
+
+	if (isAsync) {
+		row = await (adapter as PostgresAdapter).get(sql, [id]);
+	} else {
+		row = (adapter as SqliteAdapter).get(sql, [id]) as DbRow | undefined;
+	}
+
+	if (!row) return undefined;
+	return parseEnvironmentRow(row);
+}
+
+/**
+ * Get all environments for a user (excludes deleted)
+ */
+export async function getEnvironmentsByUserId(userId: string): Promise<Environment[]> {
+	const sql = `SELECT * FROM environments WHERE user_id = ? AND status != 'deleted' ORDER BY created_at DESC`;
+
+	let rows: DbRow[];
+	if (isAsync) {
+		rows = await (adapter as PostgresAdapter).all(sql, [userId]);
+	} else {
+		rows = (adapter as SqliteAdapter).all(sql, [userId]) as DbRow[];
+	}
+	return parseEnvironmentRows(rows);
+}
+
+/**
+ * Update environment status
+ */
+export async function updateEnvironmentStatus(
+	id: string,
+	status: EnvironmentStatus
+): Promise<void> {
+	const sql = `UPDATE environments SET status = ?, updated_at = ${sqlBuilder.now()} WHERE id = ?`;
+
+	if (isAsync) {
+		await (adapter as PostgresAdapter).run(sql, [status, id]);
+	} else {
+		adapter.run(sql, [status, id]);
+	}
+}
+
+/**
+ * Update environment VM details (after provisioning)
+ */
+export async function updateEnvironmentVm(
+	id: string,
+	vmName: string,
+	vmZone: string,
+	vmMachineType: string
+): Promise<void> {
+	const sql = `UPDATE environments SET vm_name = ?, vm_zone = ?, vm_machine_type = ?, updated_at = ${sqlBuilder.now()} WHERE id = ?`;
+
+	if (isAsync) {
+		await (adapter as PostgresAdapter).run(sql, [vmName, vmZone, vmMachineType, id]);
+	} else {
+		adapter.run(sql, [vmName, vmZone, vmMachineType, id]);
+	}
+}
+
+/**
+ * Update environment connection info
+ */
+export async function updateEnvironmentConnectionInfo(
+	id: string,
+	connectionInfo: EnvironmentConnectionInfo
+): Promise<void> {
+	const sql = `UPDATE environments SET connection_info = ?, updated_at = ${sqlBuilder.now()} WHERE id = ?`;
+	const jsonStr = JSON.stringify(connectionInfo);
+
+	if (isAsync) {
+		await (adapter as PostgresAdapter).run(sql, [jsonStr, id]);
+	} else {
+		adapter.run(sql, [jsonStr, id]);
+	}
+}
+
+/**
+ * Soft-delete an environment (set status to 'deleted')
+ */
+export async function deleteEnvironment(id: string): Promise<void> {
+	await updateEnvironmentStatus(id, 'deleted');
+}
+
 export type {
 	Config,
 	ConfigCreateInput,
 	ConfigUpdateInput,
+	Environment,
+	EnvironmentConnectionInfo,
+	EnvironmentCreateInput,
+	EnvironmentStatus,
+	Spec,
+	SpecCreateInput,
+	SpecUpdateInput,
 	Task,
 	TaskCreateInput,
 	TaskMetadata,

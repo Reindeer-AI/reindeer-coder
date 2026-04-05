@@ -108,3 +108,70 @@ export interface ConfigUpdateInput {
 	is_secret?: boolean;
 	category?: string;
 }
+
+// ── Specs ──────────────────────────────────────────────────
+
+/**
+ * A devcontainer.json spec stored in GCP Secret Manager.
+ * The DB holds only the pointer (secret_path); actual content lives in Secret Manager.
+ */
+export interface Spec {
+	id: string;
+	user_id: string;
+	name: string;
+	secret_path: string;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface SpecCreateInput {
+	name: string;
+	devcontainer_json: string; // raw JSON string, stored to Secret Manager
+}
+
+export interface SpecUpdateInput {
+	name?: string;
+	devcontainer_json?: string;
+}
+
+// ── Environments ───────────────────────────────────────────
+
+export type EnvironmentStatus =
+	| 'pending'
+	| 'provisioning'
+	| 'ready'
+	| 'stopped'
+	| 'failed'
+	| 'deleted';
+
+export interface EnvironmentConnectionInfo {
+	ssh_command?: string;
+	forwarded_ports?: number[];
+	container_id?: string;
+	workspace_folder?: string;
+}
+
+/**
+ * A standalone VM provisioned from a Spec (devcontainer.json).
+ */
+export interface Environment {
+	id: string;
+	user_id: string;
+	user_email: string;
+	name: string;
+	spec_id: string;
+	status: EnvironmentStatus;
+	vm_name: string | null;
+	vm_zone: string | null;
+	vm_machine_type: string | null;
+	connection_info: EnvironmentConnectionInfo | null;
+	metadata: Record<string, unknown> | null;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface EnvironmentCreateInput {
+	spec_id: string;
+	name?: string;
+	machine_type?: string;
+}

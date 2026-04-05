@@ -97,6 +97,30 @@ export class SqlBuilder {
 					category TEXT,
 					created_at TEXT NOT NULL DEFAULT (datetime('now')),
 					updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+				);
+				CREATE TABLE IF NOT EXISTS specs (
+					id TEXT PRIMARY KEY,
+					user_id TEXT NOT NULL,
+					name TEXT NOT NULL,
+					secret_path TEXT NOT NULL,
+					created_at TEXT NOT NULL DEFAULT (datetime('now')),
+					updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+					UNIQUE(user_id, name)
+				);
+				CREATE TABLE IF NOT EXISTS environments (
+					id TEXT PRIMARY KEY,
+					user_id TEXT NOT NULL,
+					user_email TEXT NOT NULL,
+					name TEXT NOT NULL,
+					spec_id TEXT NOT NULL REFERENCES specs(id),
+					status TEXT NOT NULL DEFAULT 'pending',
+					vm_name TEXT,
+					vm_zone TEXT,
+					vm_machine_type TEXT,
+					connection_info TEXT,
+					metadata TEXT,
+					created_at TEXT NOT NULL DEFAULT (datetime('now')),
+					updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 				)
 			`;
 		}
@@ -125,6 +149,30 @@ export class SqlBuilder {
 				description TEXT,
 				is_secret BOOLEAN NOT NULL DEFAULT FALSE,
 				category TEXT,
+				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+			);
+			CREATE TABLE IF NOT EXISTS specs (
+				id TEXT PRIMARY KEY,
+				user_id TEXT NOT NULL,
+				name TEXT NOT NULL,
+				secret_path TEXT NOT NULL,
+				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				UNIQUE(user_id, name)
+			);
+			CREATE TABLE IF NOT EXISTS environments (
+				id TEXT PRIMARY KEY,
+				user_id TEXT NOT NULL,
+				user_email TEXT NOT NULL,
+				name TEXT NOT NULL,
+				spec_id TEXT NOT NULL REFERENCES specs(id),
+				status TEXT NOT NULL DEFAULT 'pending',
+				vm_name TEXT,
+				vm_zone TEXT,
+				vm_machine_type TEXT,
+				connection_info JSONB,
+				metadata JSONB,
 				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 			)

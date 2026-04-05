@@ -120,6 +120,82 @@ async function migrate() {
 
 		console.log('[migrate] ✓ Triggers created successfully');
 
+		// Create specs table
+		console.log('[migrate] Creating specs table...');
+		await adapter.exec(`
+			CREATE TABLE IF NOT EXISTS specs (
+				id TEXT PRIMARY KEY,
+				user_id TEXT NOT NULL,
+				name TEXT NOT NULL,
+				secret_path TEXT NOT NULL,
+				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				UNIQUE(user_id, name)
+			)
+		`);
+
+		await adapter.exec(`
+			CREATE INDEX IF NOT EXISTS idx_specs_user_id ON specs(user_id)
+		`);
+
+		await adapter.exec(`
+			DROP TRIGGER IF EXISTS update_specs_updated_at ON specs
+		`);
+
+		await adapter.exec(`
+			CREATE TRIGGER update_specs_updated_at
+			BEFORE UPDATE ON specs
+			FOR EACH ROW
+			EXECUTE FUNCTION update_updated_at_column()
+		`);
+
+		console.log('[migrate] ✓ Specs table created successfully');
+
+		// Create environments table
+		console.log('[migrate] Creating environments table...');
+		await adapter.exec(`
+			CREATE TABLE IF NOT EXISTS environments (
+				id TEXT PRIMARY KEY,
+				user_id TEXT NOT NULL,
+				user_email TEXT NOT NULL,
+				name TEXT NOT NULL,
+				spec_id TEXT NOT NULL REFERENCES specs(id),
+				status TEXT NOT NULL DEFAULT 'pending',
+				vm_name TEXT,
+				vm_zone TEXT,
+				vm_machine_type TEXT,
+				connection_info JSONB,
+				metadata JSONB,
+				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+			)
+		`);
+
+		await adapter.exec(`
+			CREATE INDEX IF NOT EXISTS idx_environments_user_id ON environments(user_id)
+		`);
+
+		await adapter.exec(`
+			CREATE INDEX IF NOT EXISTS idx_environments_status ON environments(status)
+		`);
+
+		await adapter.exec(`
+			CREATE INDEX IF NOT EXISTS idx_environments_spec_id ON environments(spec_id)
+		`);
+
+		await adapter.exec(`
+			DROP TRIGGER IF EXISTS update_environments_updated_at ON environments
+		`);
+
+		await adapter.exec(`
+			CREATE TRIGGER update_environments_updated_at
+			BEFORE UPDATE ON environments
+			FOR EACH ROW
+			EXECUTE FUNCTION update_updated_at_column()
+		`);
+
+		console.log('[migrate] ✓ Environments table created successfully');
+
 		console.log('[migrate] ✅ Migration completed successfully!');
 		process.exit(0);
 	} catch (error) {
