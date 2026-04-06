@@ -94,7 +94,7 @@ export class PostgresAdapter implements DbAdapter {
 
 				if (attempt < PostgresAdapter.MAX_RETRIES) {
 					// Exponential backoff: 100ms, 200ms, 400ms...
-					const delay = PostgresAdapter.BASE_DELAY_MS * Math.pow(2, attempt - 1);
+					const delay = PostgresAdapter.BASE_DELAY_MS * 2 ** (attempt - 1);
 					await sleep(delay);
 
 					// On second retry, recreate the pool in case it's completely dead
