@@ -1766,6 +1766,17 @@ function generateCliSetupCommands(
 				cmd: `echo '{"extraKnownMarketplaces":{"reindeer":{"source":{"source":"git","url":"git@gitlab.com:reindeerai/claude-reindeer.git"}}},"enabledPlugins":{"eng@reindeer":true,"tools@reindeer":true,"customers@reindeer":true}}' > ~/.claude/settings.json`,
 				desc: 'Configuring Claude Code plugin marketplace and Reindeer plugins',
 			},
+			// Write system prompt to file (avoids bash escaping issues with --system-prompt inline)
+			...(systemPrompt
+				? [
+						{
+							cmd: `cat > ~/.claude/system-prompt.md << 'SYSTEM_PROMPT_EOF'
+${systemPrompt}
+SYSTEM_PROMPT_EOF`,
+							desc: 'Writing custom system prompt to file',
+						},
+					]
+				: []),
 			// Deploy MCP configuration if available
 			...(mcpConfigBase64
 				? [
@@ -1839,12 +1850,10 @@ echo 'experimental_instructions_file = "/home/${vmUser}/.codex/instructions.md"'
  * Note: The initial task is sent separately via stdin after the agent starts
  */
 function generateAgentStartCommand(codingCli: string, systemPrompt?: string | null): string {
-	const escapedPrompt = systemPrompt?.replace(/"/g, '\\"') || '';
-
 	const commands: Record<string, string> = {
 		// Start Claude in interactive mode with --dangerously-skip-permissions
-		// The initial prompt will be sent via stdin after startup
-		'claude-code': `claude --dangerously-skip-permissions${escapedPrompt ? ` --system-prompt "${escapedPrompt}"` : ''}`,
+		// System prompt is written to ~/.claude/system-prompt.md during setup
+		'claude-code': `claude --dangerously-skip-permissions${systemPrompt ? ` --system-prompt-file ~/.claude/system-prompt.md` : ''}`,
 		// Gemini with --yolo flag for autonomous operation
 		// Auto-routing will select best model (Gemini 3 Pro/Flash) based on task complexity
 		// Will use Application Default Credentials if GOOGLE_API_KEY not set
