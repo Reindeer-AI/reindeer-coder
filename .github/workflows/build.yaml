@@ -33,8 +33,8 @@ jobs:
           workload_identity_provider: ${{ env.WIF_PROVIDER }}
           service_account: ${{ env.WIF_SERVICE_ACCOUNT }}
 
-      - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+      - name: Login to Artifact Registry
+        run: gcloud auth print-access-token | docker login -u oauth2accesstoken --password-stdin us-central1-docker.pkg.dev
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -54,6 +54,5 @@ jobs:
             VITE_AUTH0_CLIENT_ID=i6QxH7zvtkkm5pD1iCS4mcIavVXhuOiZ
             VITE_AUTH0_AUDIENCE=https://vibe.reindeerlabs.ai
             VITE_AUTH0_ORG_ID=org_9WU9bq88J0jAPjmM
-          # TODO: re-enable registry cache once WIF SA has iam.serviceAccounts.getAccessToken
-          # cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}_cache
-          # cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}_cache,mode=max
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
