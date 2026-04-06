@@ -9,24 +9,46 @@ on:
     branches-ignore:
       - main
 
+env:
+  IMAGE_PROJECT: reindeer-backend
+  REGISTRY: us-central1-docker.pkg.dev/reindeer-backend/containers
+  IMAGE_NAME: reindeer-coder
+  WIF_PROVIDER: projects/501901363747/locations/global/workloadIdentityPools/github-actions/providers/github
+  WIF_SERVICE_ACCOUNT: gitlab-ci@reindeer-backend.iam.gserviceaccount.com
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.WIF_SERVICE_ACCOUNT }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build image
+      - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ci/config/Dockerfile
           platforms: linux/amd64
-          push: false
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           build-args: |
             VITE_AUTH0_DOMAIN=dev-0d0uyl2iqc17144b.us.auth0.com
             VITE_AUTH0_CLIENT_ID=i6QxH7zvtkkm5pD1iCS4mcIavVXhuOiZ
