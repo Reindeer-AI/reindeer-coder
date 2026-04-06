@@ -34,7 +34,7 @@ export async function resolveMachineType(
 	// e2-standard-N: N vCPUs, 4GB per vCPU
 	const neededForCpus = Math.max(2, nextPowerOf2(cpus));
 	const neededForMem = Math.max(2, nextPowerOf2(Math.ceil(memGb / 4)));
-	const size = Math.min(Math.max(neededForCpus, neededForMem), 32);
+	const size = Math.min(Math.max(neededForCpus, neededForMem), 128);
 
 	return `e2-standard-${size}`;
 }

@@ -64,7 +64,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 
 	// Create DB record with the secret path
-	const spec = await createSpec(user.sub, body.name, secretPath);
+	const spec = await createSpec(specId, user.sub, body.name, secretPath);
 
 	return json({ spec }, { status: 201 });
 };

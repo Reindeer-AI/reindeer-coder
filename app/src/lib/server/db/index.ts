@@ -1004,8 +1004,12 @@ export async function deleteConfig(key: string): Promise<void> {
 /**
  * Create a new spec
  */
-export async function createSpec(userId: string, name: string, secretPath: string): Promise<Spec> {
-	const id = uuidv4();
+export async function createSpec(
+	id: string,
+	userId: string,
+	name: string,
+	secretPath: string
+): Promise<Spec> {
 	const sql = `
 		INSERT INTO specs (id, user_id, name, secret_path)
 		VALUES (?, ?, ?, ?)
@@ -1107,7 +1111,7 @@ export async function deleteSpec(id: string): Promise<void> {
  */
 export async function specHasActiveEnvironments(specId: string): Promise<boolean> {
 	const sql =
-		"SELECT COUNT(*) as count FROM environments WHERE spec_id = ? AND status != 'deleted'";
+		"SELECT COUNT(*) as count FROM environments WHERE spec_id = ? AND status IN ('pending', 'provisioning', 'ready', 'stopped')";
 
 	let row: DbRow | undefined;
 	if (isAsync) {
@@ -1126,21 +1130,22 @@ export async function specHasActiveEnvironments(specId: string): Promise<boolean
  */
 
 function parseEnvironmentRow(row: DbRow): Environment {
-	if (row?.connection_info && typeof row.connection_info === 'string') {
+	const parsed = { ...row };
+	if (parsed.connection_info && typeof parsed.connection_info === 'string') {
 		try {
-			row.connection_info = JSON.parse(row.connection_info);
+			parsed.connection_info = JSON.parse(parsed.connection_info);
 		} catch {
-			row.connection_info = null;
+			parsed.connection_info = null;
 		}
 	}
-	if (row?.metadata && typeof row.metadata === 'string') {
+	if (parsed.metadata && typeof parsed.metadata === 'string') {
 		try {
-			row.metadata = JSON.parse(row.metadata);
+			parsed.metadata = JSON.parse(parsed.metadata);
 		} catch {
-			row.metadata = null;
+			parsed.metadata = null;
 		}
 	}
-	return row as unknown as Environment;
+	return parsed as unknown as Environment;
 }
 
 function parseEnvironmentRows(rows: DbRow[]): Environment[] {
@@ -1263,7 +1268,7 @@ export async function updateEnvironmentConnectionInfo(
 /**
  * Soft-delete an environment (set status to 'deleted')
  */
-export async function deleteEnvironment(id: string): Promise<void> {
+export async function softDeleteEnvironment(id: string): Promise<void> {
 	await updateEnvironmentStatus(id, 'deleted');
 }
 

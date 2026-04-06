@@ -5,6 +5,7 @@ import { env } from '$env/dynamic/private';
 import {
 	getEnvironmentById,
 	getSpecById,
+	softDeleteEnvironment,
 	updateEnvironmentConnectionInfo,
 	updateEnvironmentStatus,
 	updateEnvironmentVm,
@@ -42,8 +43,10 @@ async function waitForSSH(
 					resolve(false);
 				}, timeoutMs);
 
+				let buffer = '';
 				testConn.onData((data) => {
-					if (!done && (data.includes('$') || data.includes('#') || data.includes('~'))) {
+					buffer += data;
+					if (!done && buffer.includes('SSH_READY')) {
 						done = true;
 						clearTimeout(timeout);
 						testConn.close();
@@ -324,6 +327,6 @@ export async function deleteEnvironment(envId: string): Promise<void> {
 		}
 	}
 
-	await updateEnvironmentStatus(envId, 'deleted');
+	await softDeleteEnvironment(envId);
 	console.log(`[env-orchestrator] Environment ${envId} deleted`);
 }

@@ -1,5 +1,6 @@
 <script lang="ts">
 import { onDestroy, onMount } from 'svelte';
+import type { Environment, Spec } from '$lib/server/db/schema';
 import { getAuthHeaders, initAuth0, isAuthenticated, logout, user } from '$lib/stores/auth';
 
 let { data } = $props();
@@ -8,17 +9,17 @@ let loading = $state(true);
 let showUserDropdown = $state(false);
 
 // Specs
-let specs = $state<any[]>([]);
+let specs = $state<Spec[]>([]);
 let specsLoading = $state(false);
 let showSpecModal = $state(false);
-let editingSpec = $state<any>(null);
+let editingSpec = $state<Spec | null>(null);
 let specName = $state('');
 let specJson = $state('{\n  "image": "ubuntu:22.04"\n}');
 let specError = $state('');
 let specSaving = $state(false);
 
 // Environments
-let environments = $state<any[]>([]);
+let environments = $state<Environment[]>([]);
 let envsLoading = $state(false);
 let showCreateEnvModal = $state(false);
 let selectedSpecId = $state('');
@@ -453,7 +454,7 @@ onDestroy(() => {
 										<div class="flex items-center justify-between">
 											<code class="text-xs text-gray-600 truncate flex-1 mr-2">{env.connection_info.ssh_command}</code>
 											<button
-												onclick={() => copySshCommand(env.connection_info.ssh_command)}
+												onclick={() => copySshCommand(env.connection_info!.ssh_command!)}
 												class="shrink-0 px-2 py-1 text-xs bg-reindeer-green text-white rounded hover:bg-reindeer-green-dark transition-colors"
 											>
 												Copy

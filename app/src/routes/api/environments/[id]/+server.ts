@@ -49,6 +49,13 @@ export const DELETE: RequestHandler = async ({ params, request }) => {
 		throw error(403, 'Access denied');
 	}
 
+	if (environment.status === 'provisioning') {
+		throw error(
+			409,
+			'Cannot delete environment while provisioning. Wait for it to finish or fail.'
+		);
+	}
+
 	try {
 		await deleteEnvironment(params.id);
 	} catch (err) {

@@ -63,6 +63,8 @@ export async function updateSpecSecret(
 		parent,
 		payload: { data: Buffer.from(devcontainerJson, 'utf-8') },
 	});
+
+	cache.delete(secretPath);
 }
 
 /**
