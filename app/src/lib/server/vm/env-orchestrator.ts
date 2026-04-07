@@ -28,13 +28,19 @@ async function waitForSSH(
 	vmName: string,
 	zone: string,
 	project: string,
-	opts: { maxAttempts?: number; sleepMs?: number; timeoutMs?: number } = {}
+	opts: {
+		maxAttempts?: number;
+		initialDelayMs?: number;
+		backoffMs?: number;
+		timeoutMs?: number;
+	} = {}
 ): Promise<boolean> {
-	const { maxAttempts = 5, sleepMs = 30000, timeoutMs = 30000 } = opts;
+	const { maxAttempts = 8, initialDelayMs = 5000, backoffMs = 10000, timeoutMs = 20000 } = opts;
+
+	// Short initial wait, then probe-then-sleep so fast VMs don't pay the full sleep cost
+	await sleep(initialDelayMs);
 
 	for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-		await sleep(sleepMs);
-
 		try {
 			const connected = await new Promise<boolean>((resolve) => {
 				const testConn = connectToVM(vmName, zone, project);
@@ -67,12 +73,16 @@ async function waitForSSH(
 
 				setTimeout(() => {
 					testConn.write('echo "SSH_READY"\n');
-				}, 5000);
+				}, 2000);
 			});
 
 			if (connected) return true;
 		} catch {
 			console.log(`[env-orchestrator] SSH attempt ${attempt}/${maxAttempts} failed for ${vmName}`);
+		}
+
+		if (attempt < maxAttempts) {
+			await sleep(backoffMs);
 		}
 	}
 
@@ -243,8 +253,11 @@ export async function provisionEnvironment(envId: string): Promise<void> {
 	);
 
 	const vmName = `env-${envId.slice(0, 8)}-${Date.now()}`;
-	const imageFamily = env.VM_IMAGE_FAMILY || 'ubuntu-2204-lts';
-	const imageProject = env.VM_IMAGE_PROJECT || 'ubuntu-os-cloud';
+	// Image source is config-driven (env-orchestrator only) so custom VM images
+	// can be swapped without redeploying. configService.get auto-falls-back through
+	// DB config → VM_IMAGE_FAMILY env → default.
+	const imageFamily = await configService.get('vm.image_family', 'ubuntu-2204-lts');
+	const imageProject = await configService.get('vm.image_project', 'ubuntu-os-cloud');
 
 	const starterReposRaw = await configService.get('vm.starter_repos', '');
 	const starterReposPathRaw = await configService.get('vm.starter_repos_path', '/opt/repos');
@@ -437,7 +450,8 @@ export async function startEnvironment(envId: string): Promise<void> {
 
 	// Shorter waits since VM already has OS installed
 	const sshReady = await waitForSSH(environment.vm_name, environment.vm_zone, project, {
-		sleepMs: 15000,
+		initialDelayMs: 3000,
+		backoffMs: 5000,
 		timeoutMs: 15000,
 	});
 
