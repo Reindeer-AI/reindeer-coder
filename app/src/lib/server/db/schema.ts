@@ -146,6 +146,7 @@ export type EnvironmentStatus =
 
 export interface EnvironmentConnectionInfo {
 	ssh_command?: string;
+	container_shell_command?: string;
 	forwarded_ports?: number[];
 	container_id?: string;
 	workspace_folder?: string;
