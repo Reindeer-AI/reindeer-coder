@@ -4,17 +4,20 @@
 	"private": true,
 	"workspaces": [
 		"app",
-		"vscode-extension"
+		"vscode-extension",
+		"cli"
 	],
 	"scripts": {
 		"dev": "npm run --workspace=app dev",
 		"dev:ext": "npm run --workspace=vscode-extension watch",
+		"dev:cli": "npm run --workspace=cli dev",
 		"build": "npm run --workspace=app build",
 		"build:ext": "npm run --workspace=vscode-extension build",
+		"build:cli": "npm run --workspace=cli build",
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
 		"format": "biome format --write .",
-		"check": "npm run --workspace=app check"
+		"check": "npm run --workspace=app check && npm run --workspace=cli check"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.3.8"
