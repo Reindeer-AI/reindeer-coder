@@ -1708,6 +1708,17 @@ function generateCliSetupCommands(
 				cmd: `mkdir -p ~/.claude && API_KEY_SUFFIX=$(echo $ANTHROPIC_API_KEY | tail -c 21) && echo '{"numStartups":1,"theme":"dark","autoUpdaterStatus":"disabled","hasCompletedOnboarding":true,"shiftEnterKeyBindingInstalled":true,"bypassPermissionsModeAccepted":true,"customApiKeyResponses":{"approved":["'$API_KEY_SUFFIX'"],"rejected":[]}}' > ~/.claude.json`,
 				desc: 'Creating Claude Code settings to skip login and onboarding',
 			},
+			// Write system prompt to file (avoids bash escaping issues with --system-prompt inline)
+			...(systemPrompt
+				? [
+						{
+							cmd: `cat > ~/.claude/system-prompt.md << 'SYSTEM_PROMPT_EOF'
+${systemPrompt}
+SYSTEM_PROMPT_EOF`,
+							desc: 'Writing custom system prompt to file',
+						},
+					]
+				: []),
 			// Deploy MCP configuration if available
 			...(mcpConfigBase64
 				? [
@@ -1781,17 +1792,10 @@ echo 'experimental_instructions_file = "/home/${vmUser}/.codex/instructions.md"'
  * Note: The initial task is sent separately via stdin after the agent starts
  */
 function generateAgentStartCommand(codingCli: string, systemPrompt?: string | null): string {
-	// Escape all bash-special characters inside double quotes: \ " $ `
-	const escapedPrompt = systemPrompt
-		?.replace(/\\/g, '\\\\')
-		.replace(/"/g, '\\"')
-		.replace(/\$/g, '\\$')
-		.replace(/`/g, '\\`') || '';
-
 	const commands: Record<string, string> = {
 		// Start Claude in interactive mode with --dangerously-skip-permissions
-		// The initial prompt will be sent via stdin after startup
-		'claude-code': `claude --dangerously-skip-permissions${escapedPrompt ? ` --system-prompt "${escapedPrompt}"` : ''}`,
+		// System prompt is written to ~/.claude/system-prompt.md during setup
+		'claude-code': `claude --dangerously-skip-permissions${systemPrompt ? ` --system-prompt-file ~/.claude/system-prompt.md` : ''}`,
 		// Gemini with --yolo flag for autonomous operation
 		// Auto-routing will select best model (Gemini 3 Pro/Flash) based on task complexity
 		// Will use Application Default Credentials if GOOGLE_API_KEY not set
