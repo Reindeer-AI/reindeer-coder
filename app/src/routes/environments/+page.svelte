@@ -449,7 +449,36 @@ onDestroy(() => {
 								</div>
 
 								<!-- Connection info -->
-								{#if env.status === 'ready' && env.connection_info?.ssh_command}
+								{#if env.status === 'ready' && env.connection_info?.container_shell_command}
+									<div class="bg-gray-50 rounded-lg p-3 mb-3 space-y-2">
+										<div>
+											<div class="text-xs text-gray-500 mb-1">Container shell (Claude/Codex live here)</div>
+											<div class="flex items-center justify-between">
+												<code class="text-xs text-gray-600 truncate flex-1 mr-2">{env.connection_info.container_shell_command}</code>
+												<button
+													onclick={() => copySshCommand(env.connection_info!.container_shell_command!)}
+													class="shrink-0 px-2 py-1 text-xs bg-reindeer-green text-white rounded hover:bg-reindeer-green-dark transition-colors"
+												>
+													Copy
+												</button>
+											</div>
+										</div>
+										{#if env.connection_info.ssh_command}
+											<div>
+												<div class="text-xs text-gray-500 mb-1">VM shell (debug)</div>
+												<div class="flex items-center justify-between">
+													<code class="text-xs text-gray-600 truncate flex-1 mr-2">{env.connection_info.ssh_command}</code>
+													<button
+														onclick={() => copySshCommand(env.connection_info!.ssh_command!)}
+														class="shrink-0 px-2 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+													>
+														Copy
+													</button>
+												</div>
+											</div>
+										{/if}
+									</div>
+								{:else if env.status === 'ready' && env.connection_info?.ssh_command}
 									<div class="bg-gray-50 rounded-lg p-3 mb-3">
 										<div class="flex items-center justify-between">
 											<code class="text-xs text-gray-600 truncate flex-1 mr-2">{env.connection_info.ssh_command}</code>

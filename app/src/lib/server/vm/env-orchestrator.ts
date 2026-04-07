@@ -214,9 +214,12 @@ export async function provisionEnvironment(envId: string): Promise<void> {
 		}
 
 		const sshCommand = `gcloud compute ssh ${vmName} --zone=${zone} --project=${project} --tunnel-through-iap`;
+		// Drop directly into the running devcontainer (where Claude/Codex/etc. live)
+		const containerShellCommand = `gcloud compute ssh ${vmName} --zone=${zone} --project=${project} --tunnel-through-iap -- -t 'sudo devcontainer exec --workspace-folder /workspace bash -l'`;
 
 		await updateEnvironmentConnectionInfo(envId, {
 			ssh_command: sshCommand,
+			container_shell_command: containerShellCommand,
 			workspace_folder: '/workspace',
 		});
 		await updateEnvironmentStatus(envId, 'ready');
