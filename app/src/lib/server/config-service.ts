@@ -232,6 +232,20 @@ export const DEFAULT_CONFIG = {
 		category: 'VM',
 		is_secret: false,
 	},
+	'vm.starter_repos': {
+		value: '',
+		description:
+			'Comma-separated list of "org/repo" GitHub repos to pre-clone on each environment VM (e.g., "Reindeer-AI/workflows,Reindeer-AI/reindeer-ts"). Empty disables pre-cloning. Specs can bind-mount the resulting directory.',
+		category: 'VM',
+		is_secret: false,
+	},
+	'vm.starter_repos_path': {
+		value: '/opt/repos',
+		description:
+			'Host VM path where starter repos are cloned. Specs bind-mount this into containers via "mounts": [{source: <this path>, target: ...}].',
+		category: 'VM',
+		is_secret: false,
+	},
 
 	// Agent Configuration
 	'agent.default_cli': {

@@ -2,6 +2,7 @@ import { unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { env } from '$env/dynamic/private';
+import { configService } from '../config-service';
 import {
 	getEnvironmentById,
 	getSpecById,
@@ -82,11 +83,14 @@ function generateStartupScript(): string {
 	return `#!/bin/bash
 set -euo pipefail
 
+META() {
+  curl -sf "http://metadata.google.internal/computeMetadata/v1/instance/attributes/$1" \\
+    -H "Metadata-Flavor: Google" || true
+}
+
 echo "[env] Fetching devcontainer spec from Secret Manager..."
-SPEC_SECRET=$(curl -sf "http://metadata.google.internal/computeMetadata/v1/instance/attributes/SPEC_SECRET_PATH" \\
-  -H "Metadata-Flavor: Google")
-SA=$(curl -sf "http://metadata.google.internal/computeMetadata/v1/instance/attributes/SECRET_IMPERSONATE_SA" \\
-  -H "Metadata-Flavor: Google" || true)
+SPEC_SECRET=$(META SPEC_SECRET_PATH)
+SA=$(META SECRET_IMPERSONATE_SA)
 IMPERSONATE=""
 [ -n "$SA" ] && IMPERSONATE="--impersonate-service-account=$SA"
 
@@ -94,16 +98,75 @@ mkdir -p /workspace/.devcontainer
 gcloud secrets versions access "$SPEC_SECRET" $IMPERSONATE \\
   > /workspace/.devcontainer/devcontainer.json
 
-echo "[env] Installing Docker..."
+echo "[env] Installing Docker + dependencies..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq docker.io curl git
+apt-get install -y -qq docker.io curl git jq openssl
 systemctl enable --now docker
 
 echo "[env] Installing Node.js + devcontainer CLI..."
 curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
 apt-get install -y -qq nodejs
 npm install -g @devcontainers/cli
+
+STARTER_REPOS_B64=$(META STARTER_REPOS_B64)
+STARTER_REPOS_PATH=$(META STARTER_REPOS_PATH)
+STARTER_REPOS=""
+[ -n "$STARTER_REPOS_B64" ] && STARTER_REPOS=$(echo "$STARTER_REPOS_B64" | base64 -d)
+
+if [ -n "$STARTER_REPOS" ]; then
+  echo "[env] Resolving GitHub App installation token for starter repos..."
+  GITHUB_APP_ID=$(META GITHUB_APP_ID)
+  GITHUB_INSTALLATION_ID=$(META GITHUB_INSTALLATION_ID)
+  GITHUB_APP_PRIVATE_KEY_SECRET=$(META GITHUB_APP_PRIVATE_KEY_SECRET)
+  GH_TOKEN=""
+  if [ -n "$GITHUB_APP_ID" ] && [ -n "$GITHUB_INSTALLATION_ID" ] && [ -n "$GITHUB_APP_PRIVATE_KEY_SECRET" ]; then
+    PRIVATE_KEY=$(gcloud secrets versions access "$GITHUB_APP_PRIVATE_KEY_SECRET" $IMPERSONATE 2>&1 | grep -v "^WARNING" || true)
+    if [ -n "$PRIVATE_KEY" ]; then
+      echo "$PRIVATE_KEY" > /tmp/gh-app.pem
+      chmod 600 /tmp/gh-app.pem
+      NOW=$(date +%s)
+      IAT=$((NOW - 60))
+      EXP=$((NOW + 600))
+      HEADER=$(echo -n '{"alg":"RS256","typ":"JWT"}' | base64 -w 0 | tr '+/' '-_' | tr -d '=')
+      PAYLOAD=$(echo -n '{"iat":'$IAT',"exp":'$EXP',"iss":"'$GITHUB_APP_ID'"}' | base64 -w 0 | tr '+/' '-_' | tr -d '=')
+      SIGNATURE=$(echo -n "$HEADER.$PAYLOAD" | openssl dgst -sha256 -sign /tmp/gh-app.pem | base64 -w 0 | tr '+/' '-_' | tr -d '=')
+      JWT="$HEADER.$PAYLOAD.$SIGNATURE"
+      GH_TOKEN=$(curl -sf -X POST \\
+        -H "Authorization: Bearer $JWT" \\
+        -H "Accept: application/vnd.github+json" \\
+        "https://api.github.com/app/installations/$GITHUB_INSTALLATION_ID/access_tokens" | jq -r '.token // empty')
+      rm -f /tmp/gh-app.pem
+    fi
+  fi
+
+  if [ -n "$GH_TOKEN" ]; then
+    echo "[env] Cloning starter repos to $STARTER_REPOS_PATH..."
+    mkdir -p "$STARTER_REPOS_PATH"
+    pids=()
+    for repo in $(echo "$STARTER_REPOS" | tr ',' ' '); do
+      name=$(basename "$repo")
+      target="$STARTER_REPOS_PATH/$name"
+      if [ -d "$target" ]; then
+        echo "[env] Skipping $repo (already cloned)"
+        continue
+      fi
+      (
+        git clone --quiet "https://x-access-token:$GH_TOKEN@github.com/$repo.git" "$target"
+        # Strip token from remote URL so users can re-auth their own way later
+        git -C "$target" remote set-url origin "https://github.com/$repo.git"
+      ) &
+      pids+=($!)
+    done
+    for pid in "\${pids[@]}"; do wait "$pid" || echo "[env] WARNING: clone failed (pid $pid)"; done
+    # Make accessible to container users (typically uid 1000)
+    chmod -R o+rwX "$STARTER_REPOS_PATH"
+    GH_TOKEN=""
+    echo "[env] Starter repos ready"
+  else
+    echo "[env] Skipping starter repos: GitHub App not configured or token mint failed"
+  fi
+fi
 
 echo "[env] Building and starting devcontainer..."
 devcontainer up --workspace-folder /workspace
@@ -144,6 +207,10 @@ export async function provisionEnvironment(envId: string): Promise<void> {
 	const imageFamily = env.VM_IMAGE_FAMILY || 'ubuntu-2204-lts';
 	const imageProject = env.VM_IMAGE_PROJECT || 'ubuntu-os-cloud';
 
+	const starterRepos = await configService.get('vm.starter_repos', '');
+	const starterReposPath = await configService.get('vm.starter_repos_path', '/opt/repos');
+	const starterReposB64 = Buffer.from(starterRepos, 'utf-8').toString('base64');
+
 	await updateEnvironmentVm(envId, vmName, zone, machineType);
 	await updateEnvironmentStatus(envId, 'provisioning');
 
@@ -163,7 +230,7 @@ export async function provisionEnvironment(envId: string): Promise<void> {
 			...(network ? [`--network=${network}`] : []),
 			...(subnet ? [`--subnet=${subnet}`] : []),
 			'--tags=iap-ssh',
-			`--metadata=SPEC_SECRET_PATH=${spec.secret_path},SECRET_IMPERSONATE_SA=${env.SECRET_IMPERSONATE_SA || ''}`,
+			`--metadata=SPEC_SECRET_PATH=${spec.secret_path},SECRET_IMPERSONATE_SA=${env.SECRET_IMPERSONATE_SA || ''},GITHUB_APP_ID=${env.GITHUB_APP_ID || ''},GITHUB_INSTALLATION_ID=${env.GITHUB_INSTALLATION_ID || ''},GITHUB_APP_PRIVATE_KEY_SECRET=${env.GITHUB_APP_PRIVATE_KEY_SECRET || ''},STARTER_REPOS_B64=${starterReposB64},STARTER_REPOS_PATH=${starterReposPath}`,
 			'--labels=reindeer-env=true',
 			'--scopes=cloud-platform',
 			'--format=json',
