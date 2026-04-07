@@ -95,14 +95,15 @@ gcloud secrets versions access "$SPEC_SECRET" $IMPERSONATE \\
   > /workspace/.devcontainer/devcontainer.json
 
 echo "[env] Installing Docker..."
+export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq docker.io docker-compose-plugin curl git >/dev/null 2>&1
+apt-get install -y -qq docker.io curl git
 systemctl enable --now docker
 
-echo "[env] Installing devcontainer CLI..."
-curl -fsSL https://deb.nodesource.com/setup_20.x | bash - >/dev/null 2>&1
-apt-get install -y -qq nodejs >/dev/null 2>&1
-npm install -g @devcontainers/cli >/dev/null 2>&1
+echo "[env] Installing Node.js + devcontainer CLI..."
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+apt-get install -y -qq nodejs
+npm install -g @devcontainers/cli
 
 echo "[env] Building and starting devcontainer..."
 devcontainer up --workspace-folder /workspace
