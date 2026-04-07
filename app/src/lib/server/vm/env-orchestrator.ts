@@ -108,16 +108,22 @@ mkdir -p /workspace/.devcontainer
 gcloud secrets versions access "$SPEC_SECRET" $IMPERSONATE \\
   > /workspace/.devcontainer/devcontainer.json
 
-echo "[env] Installing Docker + dependencies..."
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-apt-get install -y -qq docker.io curl git jq openssl
-systemctl enable --now docker
+if command -v docker >/dev/null 2>&1 \\
+   && command -v node >/dev/null 2>&1 \\
+   && command -v devcontainer >/dev/null 2>&1; then
+  echo "[env] Host already has docker, node, and devcontainer-cli — skipping installs"
+else
+  echo "[env] Installing Docker + dependencies..."
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update -qq
+  apt-get install -y -qq docker.io curl git jq openssl
+  systemctl enable --now docker
 
-echo "[env] Installing Node.js + devcontainer CLI..."
-curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-apt-get install -y -qq nodejs
-npm install -g @devcontainers/cli
+  echo "[env] Installing Node.js + devcontainer CLI..."
+  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+  apt-get install -y -qq nodejs
+  npm install -g @devcontainers/cli
+fi
 
 STARTER_REPOS_B64=$(META STARTER_REPOS_B64)
 STARTER_REPOS_PATH_B64=$(META STARTER_REPOS_PATH_B64)
