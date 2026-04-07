@@ -954,7 +954,15 @@ export async function startTask(taskId: string): Promise<void> {
 			task.system_prompt,
 			vmUser
 		);
-		const agentStartCommand = generateAgentStartCommand(task.coding_cli, task.system_prompt);
+		// Claude Code receives the task via a file + positional arg (written in the
+		// command sequence below). Gemini/Codex still rely on stdin typing for now.
+		const claudeInitialTaskFile = '~/.claude/initial-task.md';
+		const usesInitialTaskFile = task.coding_cli === 'claude-code' && !!task.task_description;
+		const agentStartCommand = generateAgentStartCommand(
+			task.coding_cli,
+			task.system_prompt,
+			usesInitialTaskFile ? claudeInitialTaskFile : null
+		);
 		const repoPath = extractRepoPath(task.repository);
 
 		const commands: Array<{
@@ -986,6 +994,19 @@ export async function startTask(taskId: string): Promise<void> {
 			// Configure git identity and pre-commit hooks
 			...generateGitConfigCommands(),
 			{ cmd: `git checkout -b ${branchName}`, desc: 'Creating feature branch' },
+			// Write the initial task description to a file (claude-code only) so we can
+			// pass it as a positional arg instead of typing it into the TUI via stdin,
+			// which was fragile and often lost against the TUI's startup animation.
+			...(usesInitialTaskFile
+				? [
+						{
+							cmd: `mkdir -p ~/.claude && cat > ${claudeInitialTaskFile} << 'INITIAL_TASK_EOF'
+${task.task_description}
+INITIAL_TASK_EOF`,
+							desc: 'Writing initial task to file',
+						},
+					]
+				: []),
 			{
 				cmd: agentStartCommand,
 				desc: `Starting ${task.coding_cli} agent`,
@@ -1025,16 +1046,20 @@ export async function startTask(taskId: string): Promise<void> {
 				await updateTaskStatus(taskId, statusAfter as import('../db/schema').TaskStatus);
 			}
 
-			// After starting the agent, send the initial task description via stdin
-			if (isAgentStart) {
-				appendTerminalBuffer(taskId, `\r\n[system] Sending initial task to agent...\r\n`);
+			// After starting the agent, deliver the initial task description.
+			// - Claude Code receives it as a positional arg from the initial-task file,
+			//   so nothing needs to be sent here.
+			// - Gemini/Codex still get it typed into the TUI via stdin (legacy path).
+			if (isAgentStart && task.task_description) {
+				appendTerminalBuffer(taskId, `\r\n[system] Initial task delivered to agent.\r\n`);
 				appendTerminalBuffer(taskId, `[user] ${task.task_description}\r\n`);
-				// Send task description followed by Enter key (\r = carriage return, ASCII 13)
-				conn.write(task.task_description);
-				await new Promise((resolve) => setTimeout(resolve, 500));
-				// Send Enter key as carriage return (what terminals send for Enter)
-				conn.write('\r');
-				await new Promise((resolve) => setTimeout(resolve, 1000));
+				if (!usesInitialTaskFile) {
+					conn.write(task.task_description);
+					await new Promise((resolve) => setTimeout(resolve, 500));
+					// Send Enter key as carriage return (what terminals send for Enter)
+					conn.write('\r');
+					await new Promise((resolve) => setTimeout(resolve, 1000));
+				}
 			}
 		}
 
@@ -1763,14 +1788,33 @@ echo 'experimental_instructions_file = "/home/${vmUser}/.codex/instructions.md"'
 }
 
 /**
- * Generate the command to start the coding agent (in interactive mode)
- * Note: The initial task is sent separately via stdin after the agent starts
+ * Generate the command to start the coding agent (in interactive mode).
+ *
+ * For Claude Code, when `initialTaskFile` is provided, the task is passed as a
+ * positional prompt argument via command substitution — this avoids the fragile
+ * pattern of typing the task into the TUI over stdin after a fixed sleep, which
+ * routinely lost the prompt against the TUI's startup animation.
+ *
+ * For Gemini/Codex, the initial task is still sent via stdin after startup
+ * (see the caller); those CLIs do not yet have the file-based path.
  */
-function generateAgentStartCommand(codingCli: string, systemPrompt?: string | null): string {
+function generateAgentStartCommand(
+	codingCli: string,
+	systemPrompt?: string | null,
+	initialTaskFile?: string | null
+): string {
+	const systemPromptFlag = systemPrompt ? ` --system-prompt-file ~/.claude/system-prompt.md` : '';
+	// Command substitution keeps the task text out of the shell's argv up until
+	// the point claude is invoked, so we don't need to bash-escape the prompt.
+	const initialTaskArg = initialTaskFile ? ` "$(cat ${initialTaskFile})"` : '';
+
 	const commands: Record<string, string> = {
-		// Start Claude in interactive mode with --dangerously-skip-permissions
-		// System prompt is written to ~/.claude/system-prompt.md during setup
-		'claude-code': `claude --dangerously-skip-permissions${systemPrompt ? ` --system-prompt-file ~/.claude/system-prompt.md` : ''}`,
+		// Start Claude in interactive mode with --dangerously-skip-permissions.
+		// System prompt (if any) is read from ~/.claude/system-prompt.md.
+		// Initial task (if any) is read from ~/.claude/initial-task.md and passed
+		// as the positional [prompt] argument, which Claude Code auto-submits on
+		// startup.
+		'claude-code': `claude --dangerously-skip-permissions${systemPromptFlag}${initialTaskArg}`,
 		// Gemini with --yolo flag for autonomous operation
 		// Auto-routing will select best model (Gemini 3 Pro/Flash) based on task complexity
 		// Will use Application Default Credentials if GOOGLE_API_KEY not set
