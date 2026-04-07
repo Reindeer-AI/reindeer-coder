@@ -22,6 +22,7 @@ import {
 	execOnVMStreaming,
 	type GcloudConnection,
 } from './gcloud';
+import { gcloud } from './gcloud-cli';
 
 /**
  * Extract a readable name from an email address
@@ -353,32 +354,6 @@ async function generateFallbackBranchName(
 
 	// Final fallback: use task ID hash
 	return `${branchPrefix}/${task.id.slice(0, 8)}`;
-}
-
-/**
- * Execute a gcloud command and return stdout
- */
-async function gcloud(args: string[]): Promise<string> {
-	return new Promise((resolve, reject) => {
-		const proc = spawn('gcloud', args, { stdio: ['pipe', 'pipe', 'pipe'] });
-		let stdout = '';
-		let stderr = '';
-
-		proc.stdout?.on('data', (data: Buffer) => {
-			stdout += data.toString();
-		});
-		proc.stderr?.on('data', (data: Buffer) => {
-			stderr += data.toString();
-		});
-		proc.on('error', reject);
-		proc.on('close', (code) => {
-			if (code === 0) {
-				resolve(stdout);
-			} else {
-				reject(new Error(`gcloud failed (code ${code}): ${stderr}`));
-			}
-		});
-	});
 }
 
 /**
