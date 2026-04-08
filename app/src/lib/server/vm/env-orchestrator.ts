@@ -12,7 +12,7 @@ import {
 	updateEnvironmentVm,
 } from '../db';
 import { readSpecSecret } from '../specs/spec-store';
-import { connectToVM, copyToVM, execOnVMStreaming } from './gcloud';
+import { connectToVM, execOnVM } from './gcloud';
 import { gcloud } from './gcloud-cli';
 import { resolveMachineType } from './machine-type-resolver';
 
@@ -91,7 +91,13 @@ async function waitForSSH(
 
 function generateStartupScript(): string {
 	return `#!/bin/bash
-set -euo pipefail
+# Any failure writes /tmp/env_failed so the orchestrator can detect it via SSH
+# marker polling. 'set -E' (errtrace) makes the ERR trap inherit into subshells
+# and background jobs — without it, failures inside ( ... ) blocks wouldn't
+# fire the trap. The starter-repo clone loop is intentionally fault-tolerant
+# (|| echo WARNING) and is NOT covered by this trap.
+set -Eeuo pipefail
+trap 'touch /tmp/env_failed' ERR
 
 META() {
   curl -sf "http://metadata.google.internal/computeMetadata/v1/instance/attributes/$1" \\
@@ -298,6 +304,15 @@ export async function provisionEnvironment(envId: string): Promise<void> {
 	await updateEnvironmentVm(envId, vmName, zone, machineType);
 	await updateEnvironmentStatus(envId, 'provisioning');
 
+	// Write the startup script to a tmp file so it can be passed to the VM via
+	// --metadata-from-file. GCE's guest agent runs the startup-script metadata
+	// automatically during boot as root, so we don't need scp + ssh exec to
+	// deploy and kick it off. The orchestrator then polls for a completion
+	// marker file (/tmp/env_ready or /tmp/env_failed).
+	const scriptContent = generateStartupScript();
+	const tmpPath = join(tmpdir(), `env-startup-${envId}.sh`);
+	writeFileSync(tmpPath, scriptContent, 'utf-8');
+
 	try {
 		// VM metadata is capped at 256 KB total per value; safe for these short scalars
 		// and a base64'd repo list. Don't dump JSON manifests through this channel.
@@ -327,6 +342,7 @@ export async function provisionEnvironment(envId: string): Promise<void> {
 			...(subnet ? [`--subnet=${subnet}`] : []),
 			'--tags=iap-ssh',
 			`--metadata=${metadata}`,
+			`--metadata-from-file=startup-script=${tmpPath}`,
 			'--labels=reindeer-env=true',
 			'--scopes=cloud-platform',
 			'--format=json',
@@ -345,35 +361,58 @@ export async function provisionEnvironment(envId: string): Promise<void> {
 			throw new Error('Failed to establish SSH connection after multiple attempts');
 		}
 
-		console.log(`[env-orchestrator] SSH ready for ${vmName}, deploying startup script...`);
+		console.log(
+			`[env-orchestrator] SSH ready for ${vmName}, polling for startup script completion...`
+		);
 
-		const scriptContent = generateStartupScript();
-		const tmpPath = join(tmpdir(), `env-startup-${envId}.sh`);
-		writeFileSync(tmpPath, scriptContent, 'utf-8');
+		// Poll for the completion marker written by the startup script. The script
+		// runs in parallel with VM boot via GCE's guest agent, so by the time SSH
+		// is up, it may already be done. Each poll opens a fresh IAP tunnel, so
+		// we tolerate transient SSH/IAP failures and back off gently to reduce
+		// tunnel churn (~45 rounds over 15 min instead of 90).
+		const maxWaitMs = 15 * 60 * 1000;
+		const pollStart = Date.now();
+		const serialHint = `gcloud compute instances get-serial-port-output ${vmName} --zone=${zone} --project=${project}`;
+		let readySeen = false;
+		let attempt = 0;
 
-		try {
-			await copyToVM(vmName, tmpPath, '/tmp/env-startup.sh', zone, project);
-
-			const { exitCode } = await execOnVMStreaming(
-				vmName,
-				'chmod +x /tmp/env-startup.sh && sudo /tmp/env-startup.sh',
-				(data, stream) => {
-					console.log(`[env-orchestrator:${stream}] ${data}`);
-				},
-				zone,
-				project,
-				600000
-			);
-
-			if (exitCode !== 0) {
-				throw new Error(`Startup script failed with exit code ${exitCode}`);
-			}
-		} finally {
+		while (Date.now() - pollStart < maxWaitMs) {
+			attempt++;
+			let stdout = '';
 			try {
-				unlinkSync(tmpPath);
-			} catch {
-				// ignore cleanup errors
+				const result = await execOnVM(
+					vmName,
+					'[ -f /tmp/env_ready ] && echo READY; [ -f /tmp/env_failed ] && echo FAILED; true',
+					zone,
+					project
+				);
+				stdout = result.stdout;
+			} catch (err) {
+				const msg = err instanceof Error ? err.message : String(err);
+				console.log(`[env-orchestrator] Poll ${attempt} for ${vmName} failed (transient): ${msg}`);
+				// Fall through to backoff + retry — transient SSH/IAP errors are expected
 			}
+
+			if (stdout.includes('READY')) {
+				readySeen = true;
+				break;
+			}
+			if (stdout.includes('FAILED')) {
+				throw new Error(
+					`Startup script on ${vmName} wrote FAILED marker. Check serial port output:\n  ${serialHint}`
+				);
+			}
+
+			// Backoff: 5s, 10s, 15s, then steady 20s. Keeps p50 low while cutting
+			// tunnel churn during long-running provisions.
+			const delayMs = Math.min(5000 + (attempt - 1) * 5000, 20000);
+			await sleep(delayMs);
+		}
+
+		if (!readySeen) {
+			throw new Error(
+				`Startup script on ${vmName} did not write completion marker within 15 min. Check serial port output:\n  ${serialHint}`
+			);
 		}
 
 		const sshCommand = `gcloud compute ssh ${vmName} --zone=${zone} --project=${project} --tunnel-through-iap`;
@@ -392,6 +431,12 @@ export async function provisionEnvironment(envId: string): Promise<void> {
 		console.error(`[env-orchestrator] Failed to provision environment ${envId}:`, error);
 		await updateEnvironmentStatus(envId, 'failed');
 		throw error;
+	} finally {
+		try {
+			unlinkSync(tmpPath);
+		} catch {
+			// ignore cleanup errors
+		}
 	}
 }
 
