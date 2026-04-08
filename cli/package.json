@@ -1,0 +1,33 @@
+{
+	"name": "@reindeer-coder/cli",
+	"version": "0.1.0",
+	"private": true,
+	"description": "vibe — command-line interface for reindeer-coder",
+	"type": "module",
+	"bin": {
+		"vibe": "./dist/main.js"
+	},
+	"files": [
+		"dist",
+		"README.md"
+	],
+	"scripts": {
+		"build": "tsc",
+		"dev": "tsc --watch",
+		"start": "node dist/main.js",
+		"check": "tsc --noEmit",
+		"test": "tsx --test \"src/**/*.test.ts\""
+	},
+	"dependencies": {
+		"commander": "^12.1.0",
+		"open": "^10.1.0"
+	},
+	"devDependencies": {
+		"@types/node": "^20.10.0",
+		"tsx": "^4.19.2",
+		"typescript": "^5.9.3"
+	},
+	"engines": {
+		"node": ">=20.0.0"
+	}
+}
