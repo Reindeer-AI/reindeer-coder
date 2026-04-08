@@ -1,4 +1,4 @@
-import { CliError, ExitCode } from './util.js';
+import { CliError, ExitCode, sleep } from './util.js';
 
 // ── Types mirrored from app/src/lib/server/db/schema.ts ────────
 
@@ -192,6 +192,47 @@ export class ApiClient {
 		return data.environment;
 	}
 
+	/**
+	 * Poll an environment until it reaches `ready`, throwing on failed/deleted
+	 * or after the timeout. Emits a status line via `onStatus` whenever the
+	 * value changes, so callers can show progress without polling themselves.
+	 */
+	async waitForEnvReady(
+		id: string,
+		opts: {
+			timeoutMs: number;
+			pollMs?: number;
+			onStatus?: (status: EnvironmentStatus) => void;
+		},
+	): Promise<Environment> {
+		const pollMs = opts.pollMs ?? 3000;
+		const deadline = Date.now() + opts.timeoutMs;
+		let lastStatus: EnvironmentStatus | '' = '';
+
+		while (Date.now() < deadline) {
+			const env = await this.getEnvironment(id);
+			if (env.status !== lastStatus) {
+				opts.onStatus?.(env.status);
+				lastStatus = env.status;
+			}
+			if (env.status === 'ready') {
+				return env;
+			}
+			if (env.status === 'failed' || env.status === 'deleted') {
+				throw new CliError(
+					`Environment ${id} entered terminal state: ${env.status}`,
+					ExitCode.ENV_NOT_READY,
+				);
+			}
+			await sleep(pollMs);
+		}
+
+		throw new CliError(
+			`Environment ${id} did not become ready within ${Math.floor(opts.timeoutMs / 1000)}s`,
+			ExitCode.ENV_NOT_READY,
+		);
+	}
+
 	async listSpecs(): Promise<Spec[]> {
 		const data = await this.request<{ specs: Spec[] }>('GET', '/api/specs');
 		return data.specs;
@@ -249,6 +290,6 @@ export class ApiClient {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function looksLikeUuid(s: string): boolean {
+export function looksLikeUuid(s: string): boolean {
 	return UUID_RE.test(s);
 }

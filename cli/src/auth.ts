@@ -50,7 +50,7 @@ export function readToken(): TokenBundle | null {
 
 export function writeToken(bundle: TokenBundle): void {
 	const path = tokenPath();
-	mkdirSync(dirname(path), { recursive: true });
+	mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
 	writeFileSync(path, `${JSON.stringify(bundle, null, 2)}\n`, 'utf8');
 	chmodSync(path, 0o600);
 }
@@ -81,7 +81,14 @@ export async function getValidAccessToken(server: string): Promise<string | null
 
 	// Refresh if expired or expiring within 5 minutes.
 	const fiveMinutes = 5 * 60 * 1000;
-	if (Date.now() >= bundle.expiresAt - fiveMinutes && bundle.refreshToken) {
+	const nearExpiry = Date.now() >= bundle.expiresAt - fiveMinutes;
+
+	if (nearExpiry) {
+		if (!bundle.refreshToken) {
+			// Expired with no way to refresh — force re-login instead of
+			// returning a stale token that will fail at the next API call.
+			return null;
+		}
 		try {
 			const refreshed = await refreshAccessToken(server, bundle);
 			writeToken(refreshed);
@@ -124,15 +131,27 @@ function buildAuthorizeUrl(
 }
 
 /**
- * Listen on localhost:54321 for the Auth0 redirect, return the authorization code.
+ * Listen on 127.0.0.1:54321 for the Auth0 redirect, return the authorization
+ * code. The server is pinned to loopback so other hosts on the LAN cannot
+ * race for the callback during the login window.
  */
 function captureAuthCode(state: string): Promise<string> {
 	return new Promise((resolve, reject) => {
+		let timeoutHandle: NodeJS.Timeout | undefined;
+		const finish = <T>(fn: (v: T) => void, value: T): void => {
+			if (timeoutHandle) {
+				clearTimeout(timeoutHandle);
+				timeoutHandle = undefined;
+			}
+			server.close();
+			fn(value);
+		};
+
 		const server = createServer((req, res) => {
 			if (!req.url) {
 				return;
 			}
-			const url = new URL(req.url, `http://localhost:${CALLBACK_PORT}`);
+			const url = new URL(req.url, `http://127.0.0.1:${CALLBACK_PORT}`);
 			if (url.pathname !== '/callback') {
 				res.writeHead(404).end();
 				return;
@@ -144,15 +163,13 @@ function captureAuthCode(state: string): Promise<string> {
 			if (errParam) {
 				res.writeHead(400, { 'Content-Type': 'text/html' });
 				res.end(`<html><body><h1>Login failed</h1><p>${errParam}</p></body></html>`);
-				server.close();
-				reject(new Error(`Auth0 returned error: ${errParam}`));
+				finish(reject, new Error(`Auth0 returned error: ${errParam}`));
 				return;
 			}
 			if (returnedState !== state || !code) {
 				res.writeHead(400, { 'Content-Type': 'text/html' });
 				res.end('<html><body><h1>Login failed</h1><p>Invalid state or missing code.</p></body></html>');
-				server.close();
-				reject(new Error('invalid state or missing code'));
+				finish(reject, new Error('invalid state or missing code'));
 				return;
 			}
 
@@ -160,19 +177,17 @@ function captureAuthCode(state: string): Promise<string> {
 			res.end(
 				'<html><body><h1>Login successful</h1><p>You can close this window and return to the terminal.</p></body></html>',
 			);
-			server.close();
-			resolve(code);
+			finish(resolve, code);
 		});
 
 		server.on('error', (err) => {
-			reject(new Error(`callback server failed: ${err.message}`));
+			finish(reject, new Error(`callback server failed: ${err.message}`));
 		});
 
-		server.listen(CALLBACK_PORT, () => {
-			// listening — caller will open the browser
-		});
+		server.listen(CALLBACK_PORT, '127.0.0.1');
 
-		setTimeout(() => {
+		timeoutHandle = setTimeout(() => {
+			timeoutHandle = undefined;
 			server.close();
 			reject(new Error('login timed out after 5 minutes'));
 		}, LOGIN_TIMEOUT_MS);

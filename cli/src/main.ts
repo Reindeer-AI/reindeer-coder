@@ -20,16 +20,22 @@ interface GlobalOptions {
 }
 
 /**
- * Build an API client for the resolved server. The client closes over a
- * cached token reference so each request reads the freshest value (in case
- * a refresh fired between calls). Synchronous accessor matches the
- * ApiClient constructor signature; we resolve the token once eagerly so the
- * accessor stays sync-friendly.
+ * Build an API client for the resolved server. The token is read (and
+ * refreshed if necessary) once up front; a single CLI invocation is
+ * short-lived enough that we don't need on-demand refresh mid-run.
  */
 async function buildApiClient(globalOpts: GlobalOptions): Promise<ApiClient> {
 	const server = resolveServer(globalOpts.server);
 	const token = await getValidAccessToken(server);
 	return new ApiClient(server, () => token);
+}
+
+function parseTimeoutSeconds(raw: string): number {
+	const n = Number(raw);
+	if (!Number.isFinite(n) || n <= 0) {
+		throw new CliError(`--timeout must be a positive number of seconds (got "${raw}")`);
+	}
+	return Math.floor(n);
 }
 
 async function main(): Promise<void> {
@@ -69,14 +75,22 @@ async function main(): Promise<void> {
 		.requiredOption('--name <name>', 'human-readable environment name')
 		.option('--machine-type <type>', 'GCP machine type override')
 		.option('--no-wait', 'return immediately without polling for ready')
+		.option('--timeout <seconds>', 'max wait for ready (default 600)', parseTimeoutSeconds)
 		.action(async (cmdOpts: {
 			spec: string;
 			name: string;
 			machineType?: string;
 			wait: boolean;
+			timeout?: number;
 		}) => {
 			const api = await buildApiClient(program.opts<GlobalOptions>());
-			await envCreateCommand(api, cmdOpts);
+			await envCreateCommand(api, {
+				spec: cmdOpts.spec,
+				name: cmdOpts.name,
+				machineType: cmdOpts.machineType,
+				wait: cmdOpts.wait,
+				timeoutSeconds: cmdOpts.timeout,
+			});
 		});
 
 	env
@@ -92,10 +106,12 @@ async function main(): Promise<void> {
 		.command('connect <env-id>')
 		.description('SSH into the environment’s devcontainer')
 		.option('--print-ssh', 'print the gcloud command instead of executing it')
-		.action(async (id: string, cmdOpts: { printSsh?: boolean }) => {
+		.option('--timeout <seconds>', 'max wait when auto-starting (default 300)', parseTimeoutSeconds)
+		.action(async (id: string, cmdOpts: { printSsh?: boolean; timeout?: number }) => {
 			const api = await buildApiClient(program.opts<GlobalOptions>());
 			const code = await envConnectCommand(api, id, {
 				printSsh: cmdOpts.printSsh ?? false,
+				timeoutSeconds: cmdOpts.timeout,
 			});
 			process.exit(code);
 		});

@@ -40,7 +40,7 @@ export function readConfig(): VibeConfig {
 
 export function writeConfig(cfg: VibeConfig): void {
 	const path = configPath();
-	mkdirSync(dirname(path), { recursive: true });
+	mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
 	writeFileSync(path, `${JSON.stringify(cfg, null, 2)}\n`, 'utf8');
 }
 

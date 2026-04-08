@@ -10,6 +10,12 @@ import { CliError, ExitCode } from './util.js';
  *
  * We parse these flags rather than re-deriving them from the env metadata so
  * the CLI stays in sync with whatever the server decides at provisioning time.
+ *
+ * TODO(REI-1169-followup): this reverse-parse is fragile — the regex assumes
+ * single-quoted, no-nested-quote, no-newline inner commands. The right fix
+ * is to expose structured fields (vm_name, zone, project, container_id,
+ * workspace_folder) directly in EnvironmentConnectionInfo server-side and
+ * drop the shell-string parsing entirely.
  */
 export interface GcloudTarget {
 	vm: string;
