@@ -32,7 +32,13 @@ export const POST: RequestHandler = async ({ request }) => {
 		throw error(401, 'Invalid token');
 	}
 
-	let body: { spec_id?: string; name?: string; machine_type?: string };
+	let body: {
+		spec_id?: string;
+		name?: string;
+		description?: string;
+		machine_type?: string;
+		zone?: string;
+	};
 	try {
 		body = await request.json();
 	} catch {
@@ -41,6 +47,17 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	if (!body.spec_id) {
 		throw error(400, 'Missing required field: spec_id');
+	}
+
+	const trimmedDescription = body.description?.trim();
+	if (trimmedDescription && trimmedDescription.length > 500) {
+		throw error(400, 'Description must be 500 characters or fewer');
+	}
+
+	// Strict GCE zone format: prevents injection into the --zone flag.
+	// Matches e.g. us-central1-a, europe-west1-b, asia-northeast1-c.
+	if (body.zone && !/^[a-z]+-[a-z]+[0-9]+-[a-z]$/.test(body.zone)) {
+		throw error(400, 'Invalid zone format. Expected e.g. "us-central1-a", "europe-west1-b".');
 	}
 
 	// Verify spec exists and belongs to user
@@ -60,7 +77,9 @@ export const POST: RequestHandler = async ({ request }) => {
 		{
 			spec_id: body.spec_id,
 			name: body.name,
+			description: trimmedDescription || undefined,
 			machine_type: body.machine_type,
+			zone: body.zone,
 		},
 		spec.name
 	);

@@ -12,10 +12,16 @@ export async function envListCommand(api: ApiClient): Promise<void> {
 	const rows = envs.map((env) => [
 		env.id,
 		env.name,
+		truncate(env.description, 40),
 		env.status,
 		env.vm_name ?? '-',
 		env.vm_zone ?? '-',
 	]);
 
-	out(table(['ID', 'NAME', 'STATUS', 'VM', 'ZONE'], rows));
+	out(table(['ID', 'NAME', 'DESCRIPTION', 'STATUS', 'VM', 'ZONE'], rows));
+}
+
+function truncate(value: string | null | undefined, max: number): string {
+	if (!value) return '-';
+	return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }

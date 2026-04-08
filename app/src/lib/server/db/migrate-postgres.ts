@@ -159,6 +159,7 @@ async function migrate() {
 				user_id TEXT NOT NULL,
 				user_email TEXT NOT NULL,
 				name TEXT NOT NULL,
+				description TEXT,
 				spec_id TEXT NOT NULL REFERENCES specs(id),
 				status TEXT NOT NULL DEFAULT 'pending',
 				vm_name TEXT,
@@ -169,6 +170,11 @@ async function migrate() {
 				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 				updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 			)
+		`);
+
+		// Migration for existing deployments: add description column if missing
+		await adapter.exec(`
+			ALTER TABLE environments ADD COLUMN IF NOT EXISTS description TEXT
 		`);
 
 		await adapter.exec(`
