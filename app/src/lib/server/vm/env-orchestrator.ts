@@ -249,7 +249,10 @@ export async function provisionEnvironment(envId: string): Promise<void> {
 	}
 
 	const project = env.GCP_PROJECT_ID;
-	const zone = env.GCP_ZONE || 'us-central1-a';
+	// Resolution: user-provided zone (at create time) → deployment default → hardcoded.
+	// Uses the default VPC with auto-subnets, so any zone in any region works
+	// without additional subnet config.
+	const zone = environment.vm_zone || env.GCP_ZONE || 'us-central1-a';
 	const network = env.GCP_NETWORK;
 	const subnet = env.GCP_SUBNET;
 	const vmServiceAccount = env.GCP_VM_SERVICE_ACCOUNT;
@@ -403,9 +406,10 @@ export async function provisionEnvironment(envId: string): Promise<void> {
 				);
 			}
 
-			// Backoff: 5s, 10s, 15s, then steady 20s. Keeps p50 low while cutting
-			// tunnel churn during long-running provisions.
-			const delayMs = Math.min(5000 + (attempt - 1) * 5000, 20000);
+			// Backoff: 3s, 5s, 7s, then steady 8s. Fast provisions (script runs in
+			// parallel with VM boot and finishes quickly) no longer pay 20s tail
+			// latency. ~115 polls over 15 min — still cheap.
+			const delayMs = Math.min(3000 + (attempt - 1) * 2000, 8000);
 			await sleep(delayMs);
 		}
 

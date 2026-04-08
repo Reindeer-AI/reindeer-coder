@@ -160,6 +160,7 @@ export interface Environment {
 	user_id: string;
 	user_email: string;
 	name: string;
+	description: string | null;
 	spec_id: string;
 	status: EnvironmentStatus;
 	vm_name: string | null;
@@ -174,5 +175,7 @@ export interface Environment {
 export interface EnvironmentCreateInput {
 	spec_id: string;
 	name?: string;
+	description?: string;
 	machine_type?: string;
+	zone?: string;
 }

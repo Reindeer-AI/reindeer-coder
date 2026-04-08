@@ -4,7 +4,9 @@ import { log, out } from '../util.js';
 export interface EnvCreateOptions {
 	spec: string;
 	name: string;
+	description?: string;
 	machineType?: string;
+	zone?: string;
 	wait: boolean;
 	/** Override for the --wait poll deadline, in seconds. */
 	timeoutSeconds?: number;
@@ -12,17 +14,16 @@ export interface EnvCreateOptions {
 
 const DEFAULT_TIMEOUT_SECONDS = 10 * 60;
 
-export async function envCreateCommand(
-	api: ApiClient,
-	opts: EnvCreateOptions,
-): Promise<void> {
+export async function envCreateCommand(api: ApiClient, opts: EnvCreateOptions): Promise<void> {
 	const spec = await api.resolveSpec(opts.spec);
 
 	log(`Creating environment "${opts.name}" from spec "${spec.name}"...`);
 	const created = await api.createEnvironment({
 		spec_id: spec.id,
 		name: opts.name,
+		description: opts.description,
 		machine_type: opts.machineType,
+		zone: opts.zone,
 	});
 
 	if (!opts.wait) {

@@ -23,6 +23,7 @@ export interface Environment {
 	user_id: string;
 	user_email: string;
 	name: string;
+	description: string | null;
 	spec_id: string;
 	status: EnvironmentStatus;
 	vm_name: string | null;
@@ -78,14 +79,14 @@ export interface ExtensionConfig {
 export class ApiClient {
 	constructor(
 		private readonly server: string,
-		private readonly getToken: () => string | null,
+		private readonly getToken: () => string | null
 	) {}
 
 	private async request<T>(
 		method: string,
 		path: string,
 		body?: unknown,
-		opts: { auth?: boolean } = { auth: true },
+		opts: { auth?: boolean } = { auth: true }
 	): Promise<T> {
 		const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 		if (opts.auth !== false) {
@@ -106,15 +107,12 @@ export class ApiClient {
 		} catch (err) {
 			throw new CliError(
 				`Cannot reach reindeer-coder at ${this.server}: ${(err as Error).message}`,
-				ExitCode.NETWORK,
+				ExitCode.NETWORK
 			);
 		}
 
 		if (response.status === 401) {
-			throw new CliError(
-				'Authentication expired. Run: vibe login',
-				ExitCode.AUTH,
-			);
+			throw new CliError('Authentication expired. Run: vibe login', ExitCode.AUTH);
 		}
 		if (response.status === 404) {
 			throw new CliError(`Not found: ${path}`, ExitCode.NOT_FOUND);
@@ -123,7 +121,7 @@ export class ApiClient {
 			const text = await response.text().catch(() => '');
 			throw new CliError(
 				`${method} ${path} failed: ${response.status} ${response.statusText}${text ? ` — ${text}` : ''}`,
-				ExitCode.NETWORK,
+				ExitCode.NETWORK
 			);
 		}
 
@@ -141,17 +139,14 @@ export class ApiClient {
 	}
 
 	async listEnvironments(): Promise<Environment[]> {
-		const data = await this.request<{ environments: Environment[] }>(
-			'GET',
-			'/api/environments',
-		);
+		const data = await this.request<{ environments: Environment[] }>('GET', '/api/environments');
 		return data.environments;
 	}
 
 	async getEnvironment(id: string): Promise<Environment> {
 		const data = await this.request<{ environment: Environment }>(
 			'GET',
-			`/api/environments/${encodeURIComponent(id)}`,
+			`/api/environments/${encodeURIComponent(id)}`
 		);
 		return data.environment;
 	}
@@ -159,27 +154,26 @@ export class ApiClient {
 	async createEnvironment(input: {
 		spec_id: string;
 		name?: string;
+		description?: string;
 		machine_type?: string;
+		zone?: string;
 	}): Promise<Environment> {
 		const data = await this.request<{ environment: Environment }>(
 			'POST',
 			'/api/environments',
-			input,
+			input
 		);
 		return data.environment;
 	}
 
 	async deleteEnvironment(id: string): Promise<void> {
-		await this.request<{ success: true }>(
-			'DELETE',
-			`/api/environments/${encodeURIComponent(id)}`,
-		);
+		await this.request<{ success: true }>('DELETE', `/api/environments/${encodeURIComponent(id)}`);
 	}
 
 	async startEnvironment(id: string): Promise<Environment> {
 		const data = await this.request<{ environment: Environment }>(
 			'POST',
-			`/api/environments/${encodeURIComponent(id)}/start`,
+			`/api/environments/${encodeURIComponent(id)}/start`
 		);
 		return data.environment;
 	}
@@ -187,7 +181,7 @@ export class ApiClient {
 	async stopEnvironment(id: string): Promise<Environment> {
 		const data = await this.request<{ environment: Environment }>(
 			'POST',
-			`/api/environments/${encodeURIComponent(id)}/stop`,
+			`/api/environments/${encodeURIComponent(id)}/stop`
 		);
 		return data.environment;
 	}
@@ -203,7 +197,7 @@ export class ApiClient {
 			timeoutMs: number;
 			pollMs?: number;
 			onStatus?: (status: EnvironmentStatus) => void;
-		},
+		}
 	): Promise<Environment> {
 		const pollMs = opts.pollMs ?? 3000;
 		const deadline = Date.now() + opts.timeoutMs;
@@ -221,7 +215,7 @@ export class ApiClient {
 			if (env.status === 'failed' || env.status === 'deleted') {
 				throw new CliError(
 					`Environment ${id} entered terminal state: ${env.status}`,
-					ExitCode.ENV_NOT_READY,
+					ExitCode.ENV_NOT_READY
 				);
 			}
 			await sleep(pollMs);
@@ -229,7 +223,7 @@ export class ApiClient {
 
 		throw new CliError(
 			`Environment ${id} did not become ready within ${Math.floor(opts.timeoutMs / 1000)}s`,
-			ExitCode.ENV_NOT_READY,
+			ExitCode.ENV_NOT_READY
 		);
 	}
 
@@ -239,10 +233,7 @@ export class ApiClient {
 	}
 
 	async getSpec(id: string): Promise<Spec> {
-		const data = await this.request<{ spec: Spec }>(
-			'GET',
-			`/api/specs/${encodeURIComponent(id)}`,
-		);
+		const data = await this.request<{ spec: Spec }>('GET', `/api/specs/${encodeURIComponent(id)}`);
 		return data.spec;
 	}
 
@@ -255,16 +246,13 @@ export class ApiClient {
 		const data = await this.request<{ spec: Spec }>(
 			'PUT',
 			`/api/specs/${encodeURIComponent(id)}`,
-			input,
+			input
 		);
 		return data.spec;
 	}
 
 	async deleteSpec(id: string): Promise<void> {
-		await this.request<{ success: true }>(
-			'DELETE',
-			`/api/specs/${encodeURIComponent(id)}`,
-		);
+		await this.request<{ success: true }>('DELETE', `/api/specs/${encodeURIComponent(id)}`);
 	}
 
 	/**
@@ -279,10 +267,7 @@ export class ApiClient {
 		const specs = await this.listSpecs();
 		const match = specs.find((s) => s.name === ref);
 		if (!match) {
-			throw new CliError(
-				`Spec "${ref}" not found. List with: vibe spec list`,
-				ExitCode.NOT_FOUND,
-			);
+			throw new CliError(`Spec "${ref}" not found. List with: vibe spec list`, ExitCode.NOT_FOUND);
 		}
 		return match;
 	}

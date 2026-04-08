@@ -73,25 +73,33 @@ async function main(): Promise<void> {
 		.description('Create a new environment from a spec')
 		.requiredOption('--spec <spec>', 'spec id or name')
 		.requiredOption('--name <name>', 'human-readable environment name')
+		.option('-d, --description <text>', 'longer human-readable description (max 500 chars)')
 		.option('--machine-type <type>', 'GCP machine type override')
+		.option('--zone <zone>', 'GCP zone override, e.g. us-central1-a, europe-west1-b')
 		.option('--no-wait', 'return immediately without polling for ready')
 		.option('--timeout <seconds>', 'max wait for ready (default 600)', parseTimeoutSeconds)
-		.action(async (cmdOpts: {
-			spec: string;
-			name: string;
-			machineType?: string;
-			wait: boolean;
-			timeout?: number;
-		}) => {
-			const api = await buildApiClient(program.opts<GlobalOptions>());
-			await envCreateCommand(api, {
-				spec: cmdOpts.spec,
-				name: cmdOpts.name,
-				machineType: cmdOpts.machineType,
-				wait: cmdOpts.wait,
-				timeoutSeconds: cmdOpts.timeout,
-			});
-		});
+		.action(
+			async (cmdOpts: {
+				spec: string;
+				name: string;
+				description?: string;
+				machineType?: string;
+				zone?: string;
+				wait: boolean;
+				timeout?: number;
+			}) => {
+				const api = await buildApiClient(program.opts<GlobalOptions>());
+				await envCreateCommand(api, {
+					spec: cmdOpts.spec,
+					name: cmdOpts.name,
+					description: cmdOpts.description,
+					machineType: cmdOpts.machineType,
+					zone: cmdOpts.zone,
+					wait: cmdOpts.wait,
+					timeoutSeconds: cmdOpts.timeout,
+				});
+			}
+		);
 
 	env
 		.command('delete <env-id>')

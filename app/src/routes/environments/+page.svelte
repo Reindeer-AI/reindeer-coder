@@ -24,6 +24,8 @@ let envsLoading = $state(false);
 let showCreateEnvModal = $state(false);
 let selectedSpecId = $state('');
 let envName = $state('');
+let envDescription = $state('');
+let envZone = $state('');
 let machineTypeOverride = $state('');
 let envError = $state('');
 let envCreating = $state(false);
@@ -181,6 +183,8 @@ async function createEnvironment() {
 	try {
 		const body: any = { spec_id: selectedSpecId };
 		if (envName.trim()) body.name = envName.trim();
+		if (envDescription.trim()) body.description = envDescription.trim();
+		if (envZone.trim()) body.zone = envZone.trim();
 		if (machineTypeOverride.trim()) body.machine_type = machineTypeOverride.trim();
 
 		const res = await fetch('/api/environments', {
@@ -207,6 +211,8 @@ function closeEnvModal() {
 	showCreateEnvModal = false;
 	selectedSpecId = '';
 	envName = '';
+	envDescription = '';
+	envZone = '';
 	machineTypeOverride = '';
 	envError = '';
 }
@@ -439,6 +445,9 @@ onDestroy(() => {
 								<div class="flex items-start justify-between mb-3">
 									<div class="min-w-0 flex-1">
 										<h3 class="font-medium text-gray-900 truncate">{env.name}</h3>
+										{#if env.description}
+											<p class="text-xs text-gray-600 mt-0.5 line-clamp-2">{env.description}</p>
+										{/if}
 										<p class="text-xs text-gray-400 mt-0.5">
 											{env.vm_machine_type || 'pending'} &middot; {env.vm_zone || '—'}
 										</p>
@@ -627,6 +636,29 @@ onDestroy(() => {
 						type="text"
 						bind:value={envName}
 						placeholder="Auto-generated from spec name"
+						class="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:border-reindeer-green focus:ring-1 focus:ring-reindeer-green text-sm"
+					/>
+				</div>
+
+				<div>
+					<label class="block text-sm font-medium text-gray-700 mb-1" for="env-description">Description <span class="text-gray-400 font-normal">(optional)</span></label>
+					<textarea
+						id="env-description"
+						bind:value={envDescription}
+						placeholder="What are you working on in this environment?"
+						rows="2"
+						maxlength="500"
+						class="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:border-reindeer-green focus:ring-1 focus:ring-reindeer-green text-sm resize-none"
+					></textarea>
+				</div>
+
+				<div>
+					<label class="block text-sm font-medium text-gray-700 mb-1" for="env-zone">Zone <span class="text-gray-400 font-normal">(optional)</span></label>
+					<input
+						id="env-zone"
+						type="text"
+						bind:value={envZone}
+						placeholder="e.g. us-central1-a, europe-west1-b (default if empty)"
 						class="w-full px-4 py-2.5 bg-gray-50 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:border-reindeer-green focus:ring-1 focus:ring-reindeer-green text-sm"
 					/>
 				</div>

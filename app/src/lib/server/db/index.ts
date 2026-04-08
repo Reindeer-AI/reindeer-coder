@@ -90,6 +90,9 @@ async function runMigrations() {
 	const metadataType = dbConfig.type === 'postgres' ? 'JSONB' : 'TEXT';
 	await addColumnIfNotExists('tasks', 'metadata', metadataType);
 
+	// Migration: Add description column to environments for human-readable labels
+	await addColumnIfNotExists('environments', 'description', 'TEXT');
+
 	console.log('[db] Migrations completed');
 }
 
@@ -1164,10 +1167,19 @@ export async function createEnvironment(
 	const id = uuidv4();
 	const name = input.name || `${specName}-${id.slice(0, 8)}`;
 	const sql = `
-		INSERT INTO environments (id, user_id, user_email, name, spec_id, status, vm_machine_type)
-		VALUES (?, ?, ?, ?, ?, 'pending', ?)
+		INSERT INTO environments (id, user_id, user_email, name, description, spec_id, status, vm_machine_type, vm_zone)
+		VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
 	`;
-	const params = [id, userId, userEmail, name, input.spec_id, input.machine_type || null];
+	const params = [
+		id,
+		userId,
+		userEmail,
+		name,
+		input.description || null,
+		input.spec_id,
+		input.machine_type || null,
+		input.zone || null,
+	];
 
 	if (isAsync) {
 		await (adapter as PostgresAdapter).run(sql, params);
