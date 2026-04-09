@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// Injected by `bun build --define` at compile time; undefined during dev.
+declare const VIBE_VERSION: string | undefined;
+
 import { Command } from 'commander';
 import { ApiClient } from './api.js';
 import { getValidAccessToken } from './auth.js';
@@ -41,10 +44,14 @@ function parseTimeoutSeconds(raw: string): number {
 async function main(): Promise<void> {
 	const program = new Command();
 
+	// VIBE_VERSION is injected at compile time by `bun build --define`.
+	// Falls back to package.json version for dev/Node runs.
+	const version = typeof VIBE_VERSION !== 'undefined' ? VIBE_VERSION : '0.1.0';
+
 	program
 		.name('vibe')
 		.description('Command-line interface for reindeer-coder')
-		.version('0.1.0')
+		.version(version)
 		.option('--server <url>', 'override reindeer-coder server URL')
 		.showHelpAfterError();
 
