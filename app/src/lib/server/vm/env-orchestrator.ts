@@ -14,6 +14,7 @@ import {
 import { readSpecSecret } from '../specs/spec-store';
 import { connectToVM, execOnVM } from './gcloud';
 import { gcloud } from './gcloud-cli';
+import { GITHUB_TOKEN_REFRESH_SCRIPT } from './github-token-refresh';
 import { resolveMachineType } from './machine-type-resolver';
 
 function sleep(ms: number): Promise<void> {
@@ -219,6 +220,22 @@ if [ -n "$STARTER_REPOS" ] && [ -n "$STARTER_REPOS_PATH" ]; then
     # able to modify these repos via host-side processes.
     chown -R 1000:1000 "$STARTER_REPOS_PATH"
     chmod -R u=rwX,g=rwX,o= "$STARTER_REPOS_PATH"
+
+    # Write GitHub credentials to /opt/github so containers can opt in to
+    # git push / gh CLI / Claude Code marketplace auth by bind-mounting it.
+    echo "[env] Writing GitHub credentials to /opt/github..."
+    mkdir -p /opt/github
+    printf 'https://x-access-token:%s@github.com\\n' "$GH_TOKEN" > /opt/github/credentials
+    printf '%s' "$GH_TOKEN" > /opt/github/token
+    chown -R 1000:1000 /opt/github
+    chmod -R u=rwX,g=,o= /opt/github
+
+    # Install a cron job that re-mints the token every 50 min (1h TTL).
+    # The refresh script is base64-encoded here to avoid escaping issues.
+    echo '${Buffer.from(GITHUB_TOKEN_REFRESH_SCRIPT).toString('base64')}' | base64 -d > /opt/github/refresh.sh
+    chmod 700 /opt/github/refresh.sh
+    echo "*/50 * * * * root /opt/github/refresh.sh >> /var/log/github-token-refresh.log 2>&1" > /etc/cron.d/github-token-refresh
+    chmod 644 /etc/cron.d/github-token-refresh
 
     GH_TOKEN=""
     AUTH_HEADER=""
