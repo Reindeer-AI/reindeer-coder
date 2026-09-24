@@ -1,0 +1,115 @@
+name: Dependency license report
+
+on:
+  pull_request:
+    paths:
+      - ".grant.yaml"
+      - ".github/workflows/license-compliance.yml"
+      - "**/package.json"
+      - "**/package-lock.json"
+      - "**/pnpm-lock.yaml"
+      - "**/yarn.lock"
+      - "**/bun.lock"
+      - "**/bun.lockb"
+      - "**/pyproject.toml"
+      - "**/uv.lock"
+      - "**/poetry.lock"
+      - "**/requirements*.txt"
+      - "**/go.mod"
+      - "**/go.sum"
+      - "**/Cargo.lock"
+      - "**/composer.lock"
+      - "**/Gemfile.lock"
+      - "**/pom.xml"
+      - "**/gradle.lockfile"
+      - "**/.terraform.lock.hcl"
+      - "**/*.tf"
+      - "**/Package.swift"
+      - "**/Package.resolved"
+  push:
+    branches:
+      - main
+    paths:
+      - ".grant.yaml"
+      - ".github/workflows/license-compliance.yml"
+      - "**/package.json"
+      - "**/package-lock.json"
+      - "**/pnpm-lock.yaml"
+      - "**/yarn.lock"
+      - "**/bun.lock"
+      - "**/bun.lockb"
+      - "**/pyproject.toml"
+      - "**/uv.lock"
+      - "**/poetry.lock"
+      - "**/requirements*.txt"
+      - "**/go.mod"
+      - "**/go.sum"
+      - "**/Cargo.lock"
+      - "**/composer.lock"
+      - "**/Gemfile.lock"
+      - "**/pom.xml"
+      - "**/gradle.lockfile"
+      - "**/.terraform.lock.hcl"
+      - "**/*.tf"
+      - "**/Package.swift"
+      - "**/Package.resolved"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  licenses:
+    name: Report dependency licenses
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Syft and Grant
+        env:
+          SYFT_VERSION: "1.52.0"
+          SYFT_SHA256: "caeedb81fb0491615f1ebd1761e4145d41ee86dd2cc7bf80669f9f5ad9d6133d"
+          GRANT_VERSION: "0.6.8"
+          GRANT_SHA256: "6500f8bbf0f20fb993de8084686e199f0ba1eb494769ff75454286d5ef63f919"
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/bin"
+
+          curl --fail --silent --show-error --location \
+            "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz" \
+            --output "$RUNNER_TEMP/syft.tar.gz"
+          echo "${SYFT_SHA256}  $RUNNER_TEMP/syft.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/syft.tar.gz" -C "$RUNNER_TEMP/bin" syft
+
+          curl --fail --silent --show-error --location \
+            "https://github.com/anchore/grant/releases/download/v${GRANT_VERSION}/grant_${GRANT_VERSION}_linux_amd64.tar.gz" \
+            --output "$RUNNER_TEMP/grant.tar.gz"
+          echo "${GRANT_SHA256}  $RUNNER_TEMP/grant.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/grant.tar.gz" -C "$RUNNER_TEMP/bin" grant
+
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: Generate dependency SBOM
+        env:
+          SYFT_CHECK_FOR_APP_UPDATE: "false"
+          SYFT_JAVASCRIPT_INCLUDE_DEV_DEPENDENCIES: "true"
+        run: |
+          syft scan dir:. \
+            --source-name "${{ github.event.repository.name }}" \
+            --source-version "${{ github.sha }}" \
+            --output spdx-json=dependency-sbom.spdx.json
+
+      - name: Report license policy findings
+        run: grant check dependency-sbom.spdx.json --config .grant.yaml --dry-run --summary
+
+      - name: Upload dependency SBOM
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
+        with:
+          name: dependency-license-sbom
+          path: dependency-sbom.spdx.json
+          if-no-files-found: warn
+          retention-days: 14
